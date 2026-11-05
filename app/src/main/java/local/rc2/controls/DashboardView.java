@@ -257,7 +257,10 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         allKeys(c);
         disk(c, "左摇杆", 420f);
         disk(c, "右摇杆", 1500f);
-        text(c, "六通道原始值 0–2047", 960f, 540f, 23f, muted, Paint.Align.CENTER);
+        round(c, 765f, 726f, 1155f, 992f, 18f, 0x12ebf5ff);
+        text(c, "原始数据 · 0–2047", 960f, 758f, 21f, muted, Paint.Align.CENTER);
+        line(c, 795f, 782f, 1125f, 782f, 0x3a7ba3df, 1f);
+        line(c, 800f, 872f, 1120f, 872f, 0x267ba3df, 1f);
         dialBase(c, "左拨轮", 420f);
         dialBase(c, "右拨轮", 1500f);
     }
@@ -288,6 +291,26 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         round(c, l, 898f, l + frac * 360f, 927f, 5f, 0xffc7f3ff);
         line(c, cx, 895f, cx, 931f, mint, 2f);
         mono(c, String.format(Locale.US, "0x%02X  (%d)  ·  MCU %d", byteVal, byteVal, raw), cx, 962f, 22f);
+    }
+
+    private void raw(Canvas c, int[] ch) {
+        String[] names = new String[]{"RX", "RY", "LY", "LX", "LT", "RT"};
+        for (int i = 0; i < names.length; i++) {
+            float x = 815f + (i % 3) * 140f;
+            float y = 812f + (i / 3) * 34f;
+            mono(c, String.format(Locale.US, "%s %4d", names[i], ch[i]), x, y, 19f);
+        }
+        JSONObject j = InputMonitor.lastEvent();
+        if (j == null) {
+            text(c, "尚未收到按键", 960f, 912f, 18f, muted, Paint.Align.CENTER);
+            mono(c, "MCU " + InputMonitor.lastMcuFrame, 960f, 958f, 14f);
+            return;
+        }
+        text(c, "键 " + j.optString("keyName"), 960f, 900f, 18f, white, Paint.Align.CENTER);
+        text(c, "code " + j.optInt("keyCode", -1) + "  ·  scan " + j.optInt("scanCode", 0),
+                960f, 926f, 18f, muted, Paint.Align.CENTER);
+        text(c, j.optString("device"), 960f, 950f, 17f, muted, Paint.Align.CENTER);
+        mono(c, "MCU " + InputMonitor.lastMcuFrame, 960f, 976f, 14f);
     }
 
     @Override
@@ -337,6 +360,7 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         stick(c, 1500f, smooth[0], -smooth[1], ch[0], ch[1]);
         dial(c, 420f, smooth[4], ch[4]);
         dial(c, 1500f, smooth[5], ch[5]);
+        raw(c, ch);
         text(c, lastKey, 65f, 1042f, 22f, muted, Paint.Align.LEFT);
         text(c, InputMonitor.status, 1845f, 1042f, 21f, muted, Paint.Align.RIGHT);
         c.restore();

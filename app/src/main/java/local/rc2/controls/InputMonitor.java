@@ -5,6 +5,7 @@ import android.view.KeyEvent;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import org.json.JSONObject;
 
 /**
@@ -18,6 +19,8 @@ public final class InputMonitor {
     public static volatile long samples;
     public static volatile String status = "未连接 MCU";
     public static volatile long keyRevision;
+    /** 最近一帧 MCU 按键原始报文的十六进制形式，仅供面板显示。 */
+    public static volatile String lastMcuFrame = "—";
     public static final LinkedHashMap<String, JSONObject> observed = new LinkedHashMap<>();
     public static final HashSet<String> pressed = new HashSet<>();
     public static final ArrayList<JSONObject> history = new ArrayList<>();
@@ -80,6 +83,7 @@ public final class InputMonitor {
         if (b.length < 5) {
             return;
         }
+        lastMcuFrame = hex(b);
         mcuButtonsAt = SystemClock.uptimeMillis();
         int mask = (b[0] & 0x70) | ((b[2] & 0x0c) << 8) | ((b[1] & 0x01) << 16);
         int prev = priorMcu;
@@ -166,6 +170,26 @@ public final class InputMonitor {
         if (pressed.removeIf(id -> id.startsWith("mcu:"))) {
             keyRevision++;
         }
+    }
+
+    private static String hex(byte[] b) {
+        int n = Math.min(b.length, 10);
+        StringBuilder sb = new StringBuilder(n * 3);
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(String.format(Locale.US, "%02X", b[i] & 0xff));
+        }
+        if (b.length > n) {
+            sb.append(" …");
+        }
+        return sb.toString();
+    }
+
+    /** 最近一条按键事件，供仪表盘读取原始字段。 */
+    public static synchronized JSONObject lastEvent() {
+        return history.isEmpty() ? null : history.get(history.size() - 1);
     }
 
     public static synchronized String lastKey() {
