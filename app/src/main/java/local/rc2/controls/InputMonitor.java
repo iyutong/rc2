@@ -91,6 +91,23 @@ public final class InputMonitor {
     private static final LinkedHashMap<String, Sig> sigMap = new LinkedHashMap<>();
     private static final ArrayList<Push> ring = new ArrayList<>();
 
+    /** 飞行模式报文长度：C/N/S 挡位在 17 字节报文的 b2 中上报。 */
+    public static final int MODE_LEN = 17;
+    /** 当前模式原始字节（b2），未收到时为 -1。 */
+    public static volatile int modeByte = -1;
+    /** b2 的低 3 位，档位编码。 */
+    public static volatile int modeCode = -1;
+    /** 当前档位 C / N / S，"?" 表示编码未识别，"—" 表示还没收到报文。 */
+    public static volatile String modeLabel = "—";
+    /** 当前档位对应的完整报文。 */
+    public static volatile String modeFrame = "—";
+    /** 该 17B 报文的来源签名，便于确认是不是 6/174。 */
+    public static volatile String modeSource = "—";
+    public static volatile long modeAt;
+    public static volatile long modeRevision;
+    /** 已观察到的 b2 取值 → 出现次数，用于核对编码。 */
+    private static final LinkedHashMap<Integer, Integer> modeValues = new LinkedHashMap<>();
+
     private static McuReader reader;
     private static boolean running;
     private static int priorMcu = -1;
@@ -179,6 +196,9 @@ public final class InputMonitor {
             ring.remove(0);
         }
         probeRevision++;
+        if (raw.length == MODE_LEN) {
+            trackMode(cmdSet, cmdId, type, raw);
+        }
     }
 
     /** 签名表快照（副本，避免绘制时被 Binder 线程改写）。 */
@@ -196,6 +216,68 @@ public final class InputMonitor {
     /** 推送流水快照。 */
     public static synchronized List<Push> pushes() {
         return new ArrayList<>(ring);
+    }
+
+    /**
+     * 从 17 字节报文里取飞行模式。挡位在 b2，切换时 b2 的二进制位会翻转，
+     * 取低 3 位作为档位编码。
+     */
+    private static void trackMode(int cmdSet, int cmdId, int type, byte[] raw) {
+        int b2 = raw[2] & 0xff;
+        Integer seen = modeValues.get(b2);
+        modeValues.put(b2, seen == null ? 1 : seen + 1);
+        while (modeValues.size() > 8) {
+            Integer oldest = modeValues.keySet().iterator().next();
+            modeValues.remove(oldest);
+        }
+        modeAt = SystemClock.uptimeMillis();
+        if (b2 == modeByte) {
+            return;
+        }
+        String prev = modeLabel;
+        modeByte = b2;
+        modeCode = b2 & 0x07;
+        modeLabel = label(modeCode);
+        modeFrame = hex(raw, MODE_LEN);
+        modeSource = cmdSet + "/" + cmdId + " t" + type;
+        modeRevision++;
+        UiLog.i("Mode", "飞行模式 " + prev + " → " + modeLabel
+                + String.format(Locale.US, "（b2=0x%02X）", b2));
+    }
+
+    /**
+     * 档位编码映射：0/4 → C，1/5 → N，2/6 → S。
+     * 若实测编码不在此列，改这里一行即可。
+     */
+    private static String label(int code) {
+        switch (code) {
+            case 0:
+            case 4:
+                return "C";
+            case 1:
+            case 5:
+                return "N";
+            case 2:
+            case 6:
+                return "S";
+            default:
+                return "?";
+        }
+    }
+
+    /** 已观察到的 b2 取值（升序），配合次数用于核对编码。 */
+    public static synchronized String modeSeen() {
+        if (modeValues.isEmpty()) {
+            return "—";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<Integer, Integer> e : modeValues.entrySet()) {
+            if (sb.length() > 0) {
+                sb.append("  ");
+            }
+            sb.append(String.format(Locale.US, "%02X×%d", e.getKey(), e.getValue()));
+        }
+        return sb.toString();
     }
 
     private static void mcuButtons(byte[] b) {

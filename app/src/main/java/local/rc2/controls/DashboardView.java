@@ -327,6 +327,28 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         mono(c, String.format(Locale.US, "0x%02X  (%d)  ·  MCU %d", byteVal, byteVal, raw), cx, 962f, 22f);
     }
 
+    /** 中间列空档处的 C/N/S 挡位指示器。 */
+    private void modePanel(Canvas c) {
+        round(c, 765f, 438f, 1155f, 598f, 18f, 0x14ebf5ff);
+        text(c, "飞行模式", 960f, 468f, 21f, muted, Paint.Align.CENTER);
+        String[] names = {"C", "N", "S"};
+        String cur = InputMonitor.modeLabel;
+        for (int i = 0; i < 3; i++) {
+            float x = 830f + i * 130f;
+            boolean on = names[i].equals(cur);
+            round(c, x - 52f, 478f, x + 52f, 532f, 13f, on ? mint : 0xff3a588c);
+            text(c, names[i], x, 516f, 31f, on ? 0xff133648 : 0xff8ba9d6, Paint.Align.CENTER);
+        }
+        if (InputMonitor.modeByte < 0) {
+            text(c, "等待 17B 报文 · 拨一下挡位", 960f, 566f, 16f, muted, Paint.Align.CENTER);
+            return;
+        }
+        text(c, String.format(Locale.US, "b2 0x%02X · 低3位 %d · %s",
+                InputMonitor.modeByte, InputMonitor.modeCode, InputMonitor.modeSource),
+                960f, 562f, 16f, muted, Paint.Align.CENTER);
+        text(c, "已见 " + clip(InputMonitor.modeSeen(), 40), 960f, 586f, 15f, muted, Paint.Align.CENTER);
+    }
+
     private void raw(Canvas c, int[] ch) {
         String[] names = new String[]{"RX", "RY", "LY", "LX", "LT", "RT"};
         for (int i = 0; i < names.length; i++) {
@@ -540,6 +562,7 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         text(c, clip(InputMonitor.status, 26), 1845f, 71f, 19f, muted, Paint.Align.RIGHT);
 
         allKeys(c);
+        modePanel(c);
         int[] ch = InputMonitor.channels;
         stick(c, 420f, smooth[3], -smooth[2], ch[3], ch[2]);
         stick(c, 1500f, smooth[0], -smooth[1], ch[0], ch[1]);
