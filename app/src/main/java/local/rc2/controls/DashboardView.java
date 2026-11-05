@@ -27,6 +27,9 @@ public final class DashboardView extends View implements Choreographer.FrameCall
     private static final int LOG_LINES = 3;
     private static final float LOG_TOP = 1002f;
     private static final float LOG_STEP = 22f;
+    private static final int PAGE_DASH = 0;
+    private static final int PAGE_RAW = 1;
+    private static final int PAGE_PROBE = 2;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     private final Typeface regular = Typeface.create("sans-serif", Typeface.NORMAL);
@@ -55,13 +58,17 @@ public final class DashboardView extends View implements Choreographer.FrameCall
     private int logSize;
     private boolean draggingLog;
     private float dragY;
-    private boolean rawPage;
+    private int page = PAGE_DASH;
     private Bitmap rawBackdrop;
     private long rawRevision = -1;
     private byte[] rawPayload = new byte[0];
     private String rawDiff = "—";
     private List<byte[]> rawHistory = new ArrayList<>();
     private final HashSet<Integer> changedBytes = new HashSet<>();
+    private Bitmap probeBackdrop;
+    private long probeSeen = -1;
+    private List<InputMonitor.Sig> probeSigs = new ArrayList<>();
+    private List<InputMonitor.Push> probeRing = new ArrayList<>();
     private final int white = 0xffeff5ff;
     private final int muted = 0xffacbfdf;
     private final int mint = 0xff88ffe2;
@@ -88,6 +95,10 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         if (rawBackdrop != null) {
             rawBackdrop.recycle();
             rawBackdrop = null;
+        }
+        if (probeBackdrop != null) {
+            probeBackdrop.recycle();
+            probeBackdrop = null;
         }
         super.onDetachedFromWindow();
     }
@@ -386,11 +397,35 @@ public final class DashboardView extends View implements Choreographer.FrameCall
     public boolean onTouchEvent(MotionEvent e) {
         float x = (e.getX() - ox) / scale;
         float y = (e.getY() - oy) / scale;
-        if (rawPage) {
-            if (e.getActionMasked() == MotionEvent.ACTION_UP && x > 1650f && y < 115f) {
-                rawPage = false;
-                invalidate();
-                return true;
+        if (page == PAGE_RAW) {
+            if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+                if (x > 1700f && y < 115f) {
+                    page = PAGE_DASH;
+                    invalidate();
+                    return true;
+                }
+                if (x > 1400f && x < 1620f && y < 115f) {
+                    page = PAGE_PROBE;
+                    probeSeen = -1;
+                    invalidate();
+                    return true;
+                }
+            }
+            return true;
+        }
+        if (page == PAGE_PROBE) {
+            if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+                if (x > 1700f && y < 115f) {
+                    page = PAGE_DASH;
+                    invalidate();
+                    return true;
+                }
+                if (x > 1400f && x < 1620f && y < 115f) {
+                    page = PAGE_RAW;
+                    rawRevision = -1;
+                    invalidate();
+                    return true;
+                }
             }
             return true;
         }
@@ -423,7 +458,7 @@ public final class DashboardView extends View implements Choreographer.FrameCall
                     return true;
                 }
                 if (x > 765f && x < 1155f && y > 726f && y < 950f) {
-                    rawPage = true;
+                    page = PAGE_RAW;
                     rawRevision = -1;
                     invalidate();
                     return true;
@@ -463,8 +498,10 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         p.setShader(null);
         p.setColor(white);
         p.setStyle(Paint.Style.FILL);
-        if (rawPage) {
+        if (page == PAGE_RAW) {
             drawRawPage(c);
+        } else if (page == PAGE_PROBE) {
+            drawProbePage(c);
         } else {
             drawDashboard(c);
         }
@@ -526,7 +563,8 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         c.drawRect(0f, 0f, 1920f, 1080f, p);
         p.setShader(null);
         text(c, "RC2  /  按键原始报文", 65f, 73f, 31f, white, Paint.Align.LEFT);
-        text(c, "返回仪表盘", 1845f, 71f, 22f, mint, Paint.Align.RIGHT);
+        text(c, "全部推送包 ›", 1560f, 71f, 22f, mint, Paint.Align.RIGHT);
+        text(c, "返回仪表盘", 1845f, 71f, 22f, muted, Paint.Align.RIGHT);
         line(c, 65f, 122f, 1855f, 122f, 0x407ba3df, 1f);
         text(c, "当前帧 · 未解析字节", 65f, 170f, 24f, muted, Paint.Align.LEFT);
         text(c, "变化帧（最新在上）", 980f, 170f, 24f, muted, Paint.Align.LEFT);
@@ -622,6 +660,76 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         }
         if (rawHistory.isEmpty()) {
             text(c, "还没有变化帧", 980f, 224f, 19f, muted, Paint.Align.LEFT);
+        }
+    }
+
+    private void buildProbeBackdrop() {
+        if (probeBackdrop != null) {
+            probeBackdrop.recycle();
+        }
+        probeBackdrop = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(probeBackdrop);
+        p.setShader(new LinearGradient(
+                0f, 0f, 1920f, 1080f,
+                new int[]{0xff283f6e, 0xff34598f, 0xff20385e},
+                null,
+                Shader.TileMode.CLAMP));
+        c.drawRect(0f, 0f, 1920f, 1080f, p);
+        p.setShader(null);
+        text(c, "RC2  /  推送探针", 65f, 73f, 31f, white, Paint.Align.LEFT);
+        text(c, "返回报文 ‹", 1560f, 71f, 22f, mint, Paint.Align.RIGHT);
+        text(c, "返回仪表盘", 1845f, 71f, 22f, muted, Paint.Align.RIGHT);
+        line(c, 65f, 122f, 1855f, 122f, 0x407ba3df, 1f);
+        text(c, "签名分类（cmd / 类型 / 长度 / 到达次数）", 65f, 192f, 23f, muted, Paint.Align.LEFT);
+        text(c, "推送流水 · 最新在下", 940f, 192f, 23f, muted, Paint.Align.LEFT);
+        line(c, 65f, 206f, 1855f, 206f, 0x267ba3df, 1f);
+        line(c, 900f, 206f, 900f, 980f, 0x1f7ba3df, 1f);
+        text(c, "半按一次后看右栏：出现新 cmd 或新类型 → 事件在别的包里；行数在增加但 hex 相同 → 同包重复上报",
+                65f, 1016f, 17f, muted, Paint.Align.LEFT);
+        text(c, "若半按期间右栏完全不动 → 该事件不经 protocol 服务，只可能走 Android 按键层或硬件层",
+                65f, 1048f, 17f, muted, Paint.Align.LEFT);
+    }
+
+    private void drawProbePage(Canvas c) {
+        if (probeBackdrop == null) {
+            buildProbeBackdrop();
+        }
+        c.drawBitmap(probeBackdrop, 0f, 0f, p);
+        if (probeSeen != InputMonitor.probeRevision) {
+            probeSeen = InputMonitor.probeRevision;
+            probeSigs = InputMonitor.signatures();
+            probeRing = InputMonitor.pushes();
+        }
+        text(c, String.format(Locale.US, "总推送 %d · 签名 %d 类 · 缓存 %d 条",
+                InputMonitor.pushTotal, probeSigs.size(), probeRing.size()),
+                65f, 160f, 20f, white, Paint.Align.LEFT);
+
+        p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
+        p.setTypeface(fixed);
+        p.setTextSize(18f);
+        p.setTextAlign(Paint.Align.LEFT);
+
+        if (probeSigs.isEmpty()) {
+            text(c, "尚未收到任何推送包", 65f, 246f, 20f, muted, Paint.Align.LEFT);
+        }
+        int sigShown = Math.min(probeSigs.size(), 14);
+        for (int i = 0; i < sigShown; i++) {
+            InputMonitor.Sig s = probeSigs.get(i);
+            p.setColor(i == probeSigs.size() - 1 ? 0xffffd48a : white);
+            c.drawText(String.format(Locale.US, "%-7s t%-3d %2dB ×%-5d %s",
+                    s.cmd(), s.type, s.len, s.count, clip(s.hex, 44)),
+                    65f, 244f + i * 30f, p);
+        }
+
+        int ringShown = Math.min(probeRing.size(), 27);
+        int from = probeRing.size() - ringShown;
+        for (int i = 0; i < ringShown; i++) {
+            InputMonitor.Push u = probeRing.get(from + i);
+            p.setColor(i == ringShown - 1 ? 0xffffd48a : muted);
+            c.drawText(String.format(Locale.US, "%7.1f  %-7s t%-3d %2dB  %s",
+                    u.at / 1000f, u.cmd(), u.type, u.len, clip(u.hex, 36)),
+                    940f, 244f + i * 27f, p);
         }
     }
 }

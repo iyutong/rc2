@@ -38,6 +38,59 @@ public final class InputMonitor {
     public static final HashSet<String> pressed = new HashSet<>();
     public static final ArrayList<JSONObject> history = new ArrayList<>();
 
+    /** 已收到的推送包总数（不区分 cmd/类型，用于判断半按是否真的没报文）。 */
+    public static volatile long pushTotal;
+    public static volatile long probeRevision;
+
+    /** 一类推送签名：cmd + 类型 + 长度相同即归为一类，内容是最近一次的报文。 */
+    public static final class Sig {
+        public final int cmdSet;
+        public final int cmdId;
+        public final int type;
+        public final int len;
+        public int count;
+        public String hex = "";
+
+        Sig(int cmdSet, int cmdId, int type, int len) {
+            this.cmdSet = cmdSet;
+            this.cmdId = cmdId;
+            this.type = type;
+            this.len = len;
+        }
+
+        public String cmd() {
+            return cmdSet + "/" + cmdId;
+        }
+    }
+
+    /** 一条推送流水，按到达顺序保存。 */
+    public static final class Push {
+        public final int cmdSet;
+        public final int cmdId;
+        public final int type;
+        public final int len;
+        public final String hex;
+        public final long at;
+
+        Push(int cmdSet, int cmdId, int type, int len, String hex, long at) {
+            this.cmdSet = cmdSet;
+            this.cmdId = cmdId;
+            this.type = type;
+            this.len = len;
+            this.hex = hex;
+            this.at = at;
+        }
+
+        public String cmd() {
+            return cmdSet + "/" + cmdId;
+        }
+    }
+
+    private static final int PROBE_SIGS = 32;
+    private static final int PROBE_RING = 120;
+    private static final LinkedHashMap<String, Sig> sigMap = new LinkedHashMap<>();
+    private static final ArrayList<Push> ring = new ArrayList<>();
+
     private static McuReader reader;
     private static boolean running;
     private static int priorMcu = -1;
@@ -95,6 +148,56 @@ public final class InputMonitor {
         return running && SystemClock.uptimeMillis() - sampleAt < 500;
     }
 
+    /**
+     * 记录一条收到的推送包，不做任何 cmd/类型过滤。
+     * 用来确认半按快门这类"没反应"的操作究竟有没有报文到达。
+     */
+    static synchronized void probe(int[] hdr, byte[] raw) {
+        if (raw == null) {
+            return;
+        }
+        int cmdSet = hdr.length > 13 ? hdr[13] : -1;
+        int cmdId = hdr.length > 14 ? hdr[14] : -1;
+        int type = hdr.length > 5 ? hdr[5] : -1;
+        String hex = hex(raw, 24);
+        pushTotal++;
+        String key = cmdSet + "/" + cmdId + "/" + type + "/" + raw.length;
+        Sig s = sigMap.get(key);
+        if (s == null) {
+            s = new Sig(cmdSet, cmdId, type, raw.length);
+            sigMap.put(key, s);
+            while (sigMap.size() > PROBE_SIGS) {
+                String oldest = sigMap.keySet().iterator().next();
+                sigMap.remove(oldest);
+            }
+            UiLog.i("Probe", "新签名 " + s.cmd() + " 类型 " + type + " · " + hex);
+        }
+        s.count++;
+        s.hex = hex;
+        ring.add(new Push(cmdSet, cmdId, type, raw.length, hex, SystemClock.uptimeMillis()));
+        while (ring.size() > PROBE_RING) {
+            ring.remove(0);
+        }
+        probeRevision++;
+    }
+
+    /** 签名表快照（副本，避免绘制时被 Binder 线程改写）。 */
+    public static synchronized List<Sig> signatures() {
+        ArrayList<Sig> out = new ArrayList<>(sigMap.size());
+        for (Sig s : sigMap.values()) {
+            Sig c = new Sig(s.cmdSet, s.cmdId, s.type, s.len);
+            c.count = s.count;
+            c.hex = s.hex;
+            out.add(c);
+        }
+        return out;
+    }
+
+    /** 推送流水快照。 */
+    public static synchronized List<Push> pushes() {
+        return new ArrayList<>(ring);
+    }
+
     private static void mcuButtons(byte[] b) {
         if (b.length < 5) {
             return;
@@ -146,15 +249,16 @@ public final class InputMonitor {
         keyRevision++;
     }
 
-    /** 记录一条系统派发的实体按键事件（仅在 Activity 前台有效）。 */
+    /**
+     * 记录一条系统派发的实体按键事件（仅在 Activity 前台有效）。
+     * 不再按设备名过滤——半按快门若走 Android 按键层（KEYCODE_FOCUS），
+     * 也必须能在这里留下痕迹。
+     */
     public static synchronized void record(KeyEvent e) {
         if (e.getDevice() == null) {
             return;
         }
         String devName = e.getDevice().getName();
-        if (!devName.contains("DJI") && !devName.equals("gpio-keys") && !devName.contains("qpnp")) {
-            return;
-        }
         String id = e.getScanCode() > 0 ? "scan:" + e.getScanCode() : "key:" + e.getKeyCode();
         JSONObject j = new JSONObject();
         try {

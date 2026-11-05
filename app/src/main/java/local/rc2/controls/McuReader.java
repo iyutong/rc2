@@ -26,32 +26,47 @@ final class McuReader {
     private final Binder pushes = new Binder() {
         @Override
         protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
-            if (code == IBinder.INTERFACE_TRANSACTION) {
-                if (reply != null) {
-                    reply.writeString("com.dji.protocol.IPackListener");
-                }
-                return true;
-            }
-            if (code == IBinder.FIRST_CALL_TRANSACTION) {
-                data.enforceInterface("com.dji.protocol.IPackListener");
-                try {
-                    if (data.readInt() != 0) {
-                        int[] hdr = new int[15];
-                        for (int i = 0; i < 15; i++) {
-                            hdr[i] = data.readInt();
-                        }
-                        byte[] raw = data.readInt() > 0 ? data.createByteArray() : null;
-                        if (running && raw != null && hdr[13] == 6 && hdr[14] == 174 && hdr[5] == 2) {
-                            listener.buttons(raw);
-                        }
-                    }
-                } catch (Exception e) {
-                    UiLog.e("MCU", "按键推送解码失败", e);
-                }
+            return onPush(code, data, reply);
+        }
+    };
+
+    /** 追加的通配订阅（cmdSet 6 下任意 cmd），只为观察半按是否走了别的包号。 */
+    private final Binder wide = new Binder() {
+        @Override
+        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+            return onPush(code, data, reply);
+        }
+    };
+
+    private boolean onPush(int code, Parcel data, Parcel reply) throws RemoteException {
+        if (code == IBinder.INTERFACE_TRANSACTION) {
+            if (reply != null) {
+                reply.writeString("com.dji.protocol.IPackListener");
             }
             return true;
         }
-    };
+        if (code == IBinder.FIRST_CALL_TRANSACTION) {
+            data.enforceInterface("com.dji.protocol.IPackListener");
+            try {
+                if (data.readInt() != 0) {
+                    int[] hdr = new int[15];
+                    for (int i = 0; i < 15; i++) {
+                        hdr[i] = data.readInt();
+                    }
+                    byte[] raw = data.readInt() > 0 ? data.createByteArray() : null;
+                    if (running && raw != null) {
+                        InputMonitor.probe(hdr, raw);
+                        if (hdr[13] == 6 && hdr[14] == 174 && hdr[5] == 2) {
+                            listener.buttons(raw);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                UiLog.e("MCU", "按键推送解码失败", e);
+            }
+        }
+        return true;
+    }
 
     private final Binder callback = new Binder() {
         @Override
@@ -106,6 +121,7 @@ final class McuReader {
                 throw new Exception("protocol service unavailable");
             }
             subscribe();
+            subscribeWide();
             poll();
         } catch (Exception e) {
             listener.error("MCU 接口不可用：" + e);
@@ -173,6 +189,33 @@ final class McuReader {
         }
     }
 
+    /**
+     * 追加一个 cmdSet=6、cmd 不限的订阅。若服务端把 -1 当通配，
+     * 半按若走的是另一个 cmd 就能在探针页看到；不支持则只留一条警告，不影响原订阅。
+     */
+    private void subscribeWide() {
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken("com.dji.protocol.IProtocolManager");
+            data.writeInt(1);
+            data.writeInt(1);
+            int[] filter = new int[]{4, 2, 0, 6, 6, -1};
+            for (int v : filter) {
+                data.writeInt(v);
+            }
+            data.writeStrongBinder(wide);
+            service.transact(2, data, reply, 0);
+            reply.readException();
+            UiLog.i("MCU", "追加通配订阅（6/-1）");
+        } catch (Exception e) {
+            UiLog.w("MCU", "通配订阅未生效：" + e.getClass().getSimpleName());
+        } finally {
+            data.recycle();
+            reply.recycle();
+        }
+    }
+
     void stop() {
         running = false;
         worker.removeCallbacksAndMessages(null);
@@ -188,6 +231,18 @@ final class McuReader {
             } finally {
                 data.recycle();
                 reply.recycle();
+            }
+            Parcel d2 = Parcel.obtain();
+            Parcel r2 = Parcel.obtain();
+            try {
+                d2.writeInterfaceToken("com.dji.protocol.IProtocolManager");
+                d2.writeStrongBinder(wide);
+                service.transact(5, d2, r2, 0);
+                r2.readException();
+            } catch (Exception ignored) {
+            } finally {
+                d2.recycle();
+                r2.recycle();
             }
         }
         thread.quitSafely();
