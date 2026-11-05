@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:theme="@style/Theme.Rc2"
         android:label="RC2 输入监视"
         android:process="com.dpad.fuli"
         android:allowBackup="false">

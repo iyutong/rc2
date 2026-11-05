@@ -246,20 +246,20 @@ public final class InputMonitor {
     }
 
     /**
-     * 档位编码映射：0/4 → C，1/5 → N，2/6 → S。
-     * 若实测编码不在此列，改这里一行即可。
+     * 档位编码映射：0/4 → S，1/5 → N，2/6 → C。
+     * 实测原映射 C/S 颠倒，已按真机结果对调。
      */
     private static String label(int code) {
         switch (code) {
             case 0:
             case 4:
-                return "C";
+                return "S";
             case 1:
             case 5:
                 return "N";
             case 2:
             case 6:
-                return "S";
+                return "C";
             default:
                 return "?";
         }

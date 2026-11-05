@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 深色底，避免启动瞬间白屏 -->
+    <style name="Theme.Rc2" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/rc_bg_bottom</item>
+        <item name="android:colorBackground">@color/rc_bg_bottom</item>
+        <item name="android:statusBarColor">@color/rc_bg_bottom</item>
+        <item name="android:navigationBarColor">@color/rc_bg_bottom</item>
+    </style>
+
+    <!-- 功能键 -->
+    <style name="RcKey">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:background">@drawable/bg_key</item>
+        <item name="android:textColor">@color/key_text</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <!-- 分栏标题 -->
+    <style name="RcSection">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/rc_muted</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingBottom">6dp</item>
+    </style>
+
+    <!-- 等宽数值行 -->
+    <style name="RcValue">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/rc_muted</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <!-- 顶部小标签 -->
+    <style name="RcTag">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/rc_muted</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+</resources>
