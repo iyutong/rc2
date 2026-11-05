@@ -9,17 +9,17 @@
     <color name="white">#FFFFFFFF</color>
 
     <!-- 仪表盘配色 -->
-    <color name="rc_bg_top">#FF283F6E</color>
-    <color name="rc_bg_mid">#FF34598F</color>
-    <color name="rc_bg_bottom">#FF20385E</color>
-    <color name="rc_text">#FFEFF5FF</color>
-    <color name="rc_muted">#FFACBFDF</color>
+    <color name="rc_bg_top">#FF182A4C</color>
+    <color name="rc_bg_mid">#FF274474</color>
+    <color name="rc_bg_bottom">#FF121E35</color>
+    <color name="rc_text">#FFF2F7FF</color>
+    <color name="rc_muted">#FFB6C8E6</color>
     <color name="rc_mint">#FF88FFE2</color>
-    <color name="rc_key">#FF42629C</color>
+    <color name="rc_key">#FF3E5D95</color>
     <color name="rc_key_off">#FF7192C5</color>
     <color name="rc_dark">#FF133648</color>
-    <color name="rc_panel">#14EBF5FF</color>
-    <color name="rc_line">#407BA3DF</color>
+    <color name="rc_panel">#26EBF5FF</color>
+    <color name="rc_line">#4D8FB6E8</color>
     <color name="rc_warn">#FFFFC46E</color>
     <color name="rc_err">#FFFF9A9A</color>
 </resources>

@@ -19,10 +19,12 @@ public final class UiLog {
 
     public static final class Entry {
         public final char level;
+        public final String tag;
         public final String line;
 
         Entry(char level, String tag, String msg, long at) {
             this.level = level;
+            this.tag = tag;
             this.line = String.format(Locale.US, "%1$tH:%1$tM:%1$tS", new Date(at))
                     + " " + level + " " + tag + " " + msg;
         }

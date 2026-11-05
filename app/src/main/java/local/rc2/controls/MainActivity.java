@@ -46,9 +46,9 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private DialView dialRight;
     private TextView dialLeftValue;
     private TextView dialRightValue;
-    private TextView modeC;
-    private TextView modeN;
-    private TextView modeS;
+    private View modeC;
+    private View modeN;
+    private View modeS;
     private TextView modeRaw;
     private TextView channelText;
     private TextView logText;
@@ -87,6 +87,9 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 必须在 setContentView 之前：把 density 归一化成 1dp = 1 设计像素，
+        // XML 里的数值就是 1920×1080 画布上的像素，任何屏幕密度都不会变形。
+        Ui.normalizeDensity(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
         bind();
@@ -266,12 +269,12 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
 
         stickLeft.setPosition(smooth[3], -smooth[2]);
         stickRight.setPosition(smooth[0], -smooth[1]);
-        String l = String.format(Locale.US, "X %+.2f  Y %+.2f", smooth[3], -smooth[2]);
+        String l = String.format(Locale.US, "X %s  Y %s", signed(smooth[3]), signed(-smooth[2]));
         if (!l.equals(lastStickL)) {
             lastStickL = l;
             stickLeftValue.setText(l);
         }
-        String r = String.format(Locale.US, "X %+.2f  Y %+.2f", smooth[0], -smooth[1]);
+        String r = String.format(Locale.US, "X %s  Y %s", signed(smooth[0]), signed(-smooth[1]));
         if (!r.equals(lastStickR)) {
             lastStickR = r;
             stickRightValue.setText(r);
@@ -301,8 +304,15 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         refreshMode();
     }
 
-    private String dialText(int raw) {
-        int byteVal = Math.max(0, Math.min(255, (int) (((norm(raw) + 1f) / 2f) * 255f)));
+    /** 带符号两位小数，顺带把 -0.00 归一成 +0.00。 */
+    private String signed(float v) {
+        if (Math.abs(v) < 0.005f) {
+            v = 0f;
+        }
+        return String.format(Locale.US, "%+.2f", v);
+    }
+
+    private String dialText(int raw) {        int byteVal = Math.max(0, Math.min(255, (int) (((norm(raw) + 1f) / 2f) * 255f)));
         return String.format(Locale.US, "0x%02X (%d)  MCU %d", byteVal, byteVal, raw);
     }
 
@@ -364,9 +374,23 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         logRevision = rev;
         List<UiLog.Entry> all = UiLog.snapshot();
         int start = Math.max(0, all.size() - 150);
-        StringBuilder sb = new StringBuilder();
+        SpannableStringBuilder sb = new SpannableStringBuilder();
         for (int i = start; i < all.size(); i++) {
-            sb.append(all.get(i).line).append('\n');
+            UiLog.Entry e = all.get(i);
+            int from = sb.length();
+            sb.append(e.line).append('\n');
+            int color;
+            if (e.level == 'E') {
+                color = 0xffff9a9a;
+            } else if (e.level == 'W') {
+                color = 0xffffc46e;
+            } else if ("Key".equals(e.tag) || "MCU".equals(e.tag) || "Mode".equals(e.tag)) {
+                color = 0xff88ffe2;
+            } else {
+                color = 0xffb6c8e6;
+            }
+            sb.setSpan(new ForegroundColorSpan(color), from, sb.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         boolean atBottom = !logScroll.canScrollVertically(1);
         logText.setText(sb);

@@ -1,53 +1,111 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- 深色底，避免启动瞬间白屏 -->
+    <!--
+        说明：本工程的 XML 按 1920×1080 设计画布书写。
+        Ui.normalizeDensity() 已把 density 归一化为「1dp = 1 设计像素」，
+        所以下面所有 dp / sp 数值就是画布上的像素值，在所有密度的屏幕上等比一致。
+    -->
+
     <style name="Theme.Rc2" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/rc_bg_bottom</item>
         <item name="android:colorBackground">@color/rc_bg_bottom</item>
         <item name="android:statusBarColor">@color/rc_bg_bottom</item>
         <item name="android:navigationBarColor">@color/rc_bg_bottom</item>
+        <item name="android:windowNoTitle">true</item>
     </style>
 
-    <!-- 功能键 -->
-    <style name="RcKey">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">44dp</item>
-        <item name="android:background">@drawable/bg_key</item>
-        <item name="android:textColor">@color/key_text</item>
-        <item name="android:textSize">17sp</item>
+    <!-- 页面主标题 -->
+    <style name="RcTitle">
+        <item name="android:textColor">@color/rc_text</item>
+        <item name="android:textSize">34sp</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:gravity">center</item>
         <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- 顶栏文字 -->
+    <style name="RcTag">
+        <item name="android:textColor">@color/rc_muted</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- 状态徽标 -->
+    <style name="RcBadge">
+        <item name="android:textColor">@color/rc_warn</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:background">@drawable/bg_chip</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:gravity">center</item>
     </style>
 
     <!-- 分栏标题 -->
     <style name="RcSection">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">@color/rc_muted</item>
-        <item name="android:textSize">14sp</item>
-        <item name="android:gravity">center</item>
-        <item name="android:paddingBottom">6dp</item>
-    </style>
-
-    <!-- 等宽数值行 -->
-    <style name="RcValue">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/rc_muted</item>
-        <item name="android:textSize">12sp</item>
-        <item name="android:fontFamily">monospace</item>
-        <item name="android:gravity">center</item>
-    </style>
-
-    <!-- 顶部小标签 -->
-    <style name="RcTag">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/rc_muted</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textSize">21sp</item>
         <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- 等宽数值 -->
+    <style name="RcValue">
+        <item name="android:textColor">@color/rc_muted</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- 功能键 -->
+    <style name="RcKey">
+        <item name="android:background">@drawable/bg_key</item>
+        <item name="android:textColor">@color/key_text</item>
+        <item name="android:textSize">26sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- 档位方块 -->
+    <style name="RcChip">
+        <item name="android:background">@drawable/bg_chip</item>
+        <item name="android:textColor">@color/chip_text</item>
+        <item name="android:textSize">30sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- 可点击的小文字入口 -->
+    <style name="RcLink">
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:textColor">@color/rc_mint</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <!-- 可滚动正文（日志 / 报文） -->
+    <style name="RcBody">
+        <item name="android:textColor">@color/rc_muted</item>
+        <item name="android:textSize">21sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:lineSpacingExtra">5dp</item>
     </style>
 
 </resources>

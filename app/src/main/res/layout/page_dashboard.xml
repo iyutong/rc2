@@ -1,15 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    仪表盘：1920×1080 设计画布（Ui.normalizeDensity 已保证 1dp = 1 设计像素）
+    纵向：顶栏 40 + 状态行 26 + 分隔 9 + 主体(weight 1) + 日志(weight 0.9)
+    横向：左栏 1 : 中栏 1.1 : 右栏 1
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_screen"
     android:orientation="vertical"
-    android:paddingStart="14dp"
-    android:paddingTop="8dp"
-    android:paddingEnd="14dp"
-    android:paddingBottom="8dp">
+    android:paddingStart="36dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="36dp"
+    android:paddingBottom="20dp">
 
-    <!-- 顶栏 -->
+    <!-- ═══ 顶栏 ═══ -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -18,284 +23,412 @@
         android:orientation="horizontal">
 
         <TextView
+            style="@style/RcTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:text="RC2 / 输入监视"
-            android:textColor="@color/rc_text"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:text="RC2 输入监视" />
 
         <Space
             android:layout_width="0dp"
             android:layout_height="1dp"
-            android:layout_weight="1" />
+            android:layout_weight="1.5" />
 
         <TextView
             android:id="@+id/stateText"
-            style="@style/RcTag"
-            android:text="● 等待 MCU"
-            android:textColor="@color/rc_warn" />
+            style="@style/RcBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● 等待 MCU" />
 
         <TextView
             android:id="@+id/rateText"
             style="@style/RcTag"
-            android:layout_marginStart="14dp"
-            android:text="0 FPS / 0 Hz" />
-
-        <TextView
-            android:id="@+id/statusText"
-            style="@style/RcTag"
-            android:layout_marginStart="14dp"
-            android:maxWidth="220dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:text="未连接 MCU" />
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="22dp"
+            android:fontFamily="monospace"
+            android:text="0 FPS  /  0 Hz" />
     </LinearLayout>
+
+    <!-- 状态行：整行独占，永远不会被挤压 -->
+    <TextView
+        android:id="@+id/statusText"
+        style="@style/RcTag"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:gravity="end"
+        android:text="未连接 MCU"
+        android:textSize="20sp" />
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="8dp"
         android:background="@color/rc_line" />
 
-    <!-- 主体三栏 -->
+    <!-- ═══ 主体三栏 ═══ -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="14dp"
         android:layout_weight="1"
         android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <!-- 左栏 -->
+        <!-- ─── 左栏 ─── -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="@drawable/bg_panel"
             android:orientation="vertical"
-            android:padding="8dp">
+            android:padding="16dp">
 
-            <TextView
-                style="@style/RcSection"
-                android:text="左侧按键" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/keyC1"
-                style="@style/RcKey"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:text="C1" />
+                <TextView
+                    style="@style/RcSection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="左摇杆" />
+
+                <TextView
+                    android:id="@+id/stickLeftValue"
+                    style="@style/RcValue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:text="X +0.00  Y +0.00" />
+            </LinearLayout>
 
             <local.rc2.controls.StickView
                 android:id="@+id/stickLeft"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_marginTop="6dp"
-                android:layout_weight="3.4" />
+                android:layout_marginTop="8dp"
+                android:layout_weight="1.5" />
 
-            <TextView
-                android:id="@+id/stickLeftValue"
-                style="@style/RcValue"
-                android:layout_marginTop="2dp"
-                android:text="X +0.00  Y +0.00" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                style="@style/RcSection"
-                android:layout_marginTop="4dp"
-                android:text="左拨轮" />
+                <TextView
+                    style="@style/RcSection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="左拨轮" />
+
+                <TextView
+                    android:id="@+id/dialLeftValue"
+                    style="@style/RcValue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:text="0x00 (0)" />
+            </LinearLayout>
 
             <local.rc2.controls.DialView
                 android:id="@+id/dialLeft"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="0.7" />
+                android:layout_marginTop="8dp"
+                android:layout_weight="0.3" />
 
             <TextView
-                android:id="@+id/dialLeftValue"
-                style="@style/RcValue"
-                android:text="0x00 (0)" />
+                android:id="@+id/keyC1"
+                style="@style/RcKey"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="16dp"
+                android:layout_weight="0.45"
+                android:text="C1" />
         </LinearLayout>
 
-        <!-- 中栏 -->
+        <!-- ─── 中栏 ─── -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1.12"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1.1"
             android:background="@drawable/bg_panel"
             android:orientation="vertical"
-            android:padding="8dp">
+            android:padding="16dp">
 
             <TextView
                 style="@style/RcSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:text="功能按键" />
 
-            <TextView
-                android:id="@+id/keyRecord"
-                style="@style/RcKey"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:text="录像" />
-
-            <TextView
-                android:id="@+id/keyShutter"
-                style="@style/RcKey"
-                android:layout_height="0dp"
-                android:layout_marginTop="8dp"
-                android:layout_weight="1"
-                android:text="拍照" />
-
-            <!-- 飞行模式 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_marginTop="8dp"
-                android:layout_weight="1.35"
-                android:orientation="vertical">
+                android:layout_marginTop="10dp"
+                android:layout_weight="1"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
                 <TextView
-                    style="@style/RcSection"
-                    android:layout_height="0dp"
-                    android:layout_weight="0.35"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:text="飞行模式"
-                    android:textSize="12sp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
+                    android:id="@+id/keyRecord"
+                    style="@style/RcKey"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="8dp"
                     android:layout_weight="1"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:id="@+id/modeC"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="4dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_chip"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:text="C"
-                        android:textColor="@color/chip_text"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/modeN"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_chip"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:text="N"
-                        android:textColor="@color/chip_text"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/modeS"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginStart="4dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_chip"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:text="S"
-                        android:textColor="@color/chip_text"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
+                    android:text="录像" />
 
                 <TextView
-                    android:id="@+id/modeRaw"
-                    style="@style/RcValue"
-                    android:layout_height="0dp"
-                    android:layout_weight="0.5"
-                    android:gravity="center"
-                    android:maxLines="1"
-                    android:text="b2 —"
-                    android:textSize="11sp" />
+                    android:id="@+id/keyShutter"
+                    style="@style/RcKey"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="拍照" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/keyRth"
                 style="@style/RcKey"
+                android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_marginTop="8dp"
-                android:layout_weight="1"
+                android:layout_marginTop="14dp"
+                android:layout_weight="0.75"
                 android:text="返航 / 暂停" />
+
+            <!-- 飞行模式：标题行 + 三档方块 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/RcSection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="飞行模式" />
+
+                <TextView
+                    android:id="@+id/modeRaw"
+                    style="@style/RcValue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:text="b2 —" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="10dp"
+                android:layout_weight="0.95"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/modeC"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="7dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_chip"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:duplicateParentState="true"
+                        android:includeFontPadding="false"
+                        android:text="C"
+                        android:textColor="@color/chip_text"
+                        android:textSize="32sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:duplicateParentState="true"
+                        android:includeFontPadding="false"
+                        android:text="电影"
+                        android:textColor="@color/chip_sub_text"
+                        android:textSize="19sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/modeN"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="7dp"
+                    android:layout_marginEnd="7dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_chip"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:duplicateParentState="true"
+                        android:includeFontPadding="false"
+                        android:text="N"
+                        android:textColor="@color/chip_text"
+                        android:textSize="32sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:duplicateParentState="true"
+                        android:includeFontPadding="false"
+                        android:text="普通"
+                        android:textColor="@color/chip_sub_text"
+                        android:textSize="19sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/modeS"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="7dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_chip"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:duplicateParentState="true"
+                        android:includeFontPadding="false"
+                        android:text="S"
+                        android:textColor="@color/chip_text"
+                        android:textSize="32sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:duplicateParentState="true"
+                        android:includeFontPadding="false"
+                        android:text="运动"
+                        android:textColor="@color/chip_sub_text"
+                        android:textSize="19sp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
-        <!-- 右栏 -->
+        <!-- ─── 右栏 ─── -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="16dp"
             android:layout_weight="1"
             android:background="@drawable/bg_panel"
             android:orientation="vertical"
-            android:padding="8dp">
+            android:padding="16dp">
 
-            <TextView
-                style="@style/RcSection"
-                android:text="右侧按键" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/keyC2"
-                style="@style/RcKey"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:text="C2" />
+                <TextView
+                    style="@style/RcSection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="右摇杆" />
+
+                <TextView
+                    android:id="@+id/stickRightValue"
+                    style="@style/RcValue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:text="X +0.00  Y +0.00" />
+            </LinearLayout>
 
             <local.rc2.controls.StickView
                 android:id="@+id/stickRight"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_marginTop="6dp"
-                android:layout_weight="3.4" />
+                android:layout_marginTop="8dp"
+                android:layout_weight="1.5" />
 
-            <TextView
-                android:id="@+id/stickRightValue"
-                style="@style/RcValue"
-                android:layout_marginTop="2dp"
-                android:text="X +0.00  Y +0.00" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                style="@style/RcSection"
-                android:layout_marginTop="4dp"
-                android:text="右拨轮" />
+                <TextView
+                    style="@style/RcSection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="右拨轮" />
+
+                <TextView
+                    android:id="@+id/dialRightValue"
+                    style="@style/RcValue"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:text="0x00 (0)" />
+            </LinearLayout>
 
             <local.rc2.controls.DialView
                 android:id="@+id/dialRight"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="0.7" />
+                android:layout_marginTop="8dp"
+                android:layout_weight="0.3" />
 
             <TextView
-                android:id="@+id/dialRightValue"
-                style="@style/RcValue"
-                android:text="0x00 (0)" />
+                android:id="@+id/keyC2"
+                style="@style/RcKey"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="16dp"
+                android:layout_weight="0.45"
+                android:text="C2" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 日志 -->
+    <!-- ═══ 日志 ═══ -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="8dp"
-        android:layout_weight="0.62"
+        android:layout_marginTop="14dp"
+        android:layout_weight="0.85"
         android:background="@drawable/bg_panel"
         android:orientation="vertical"
-        android:padding="8dp">
+        android:padding="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -309,8 +442,8 @@
                 android:layout_height="wrap_content"
                 android:includeFontPadding="false"
                 android:text="运行日志"
-                android:textColor="@color/rc_muted"
-                android:textSize="13sp"
+                android:textColor="@color/rc_text"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -318,55 +451,41 @@
                 style="@style/RcTag"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
+                android:layout_marginStart="20dp"
                 android:layout_weight="1"
-                android:ellipsize="end"
                 android:fontFamily="monospace"
-                android:maxLines="1"
                 android:text="RX — RY — LY — LX — LT — RT —"
-                android:textSize="11sp" />
+                android:textSize="19sp" />
 
             <TextView
                 android:id="@+id/btnRaw"
+                style="@style/RcLink"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="?android:attr/selectableItemBackground"
-                android:includeFontPadding="false"
-                android:padding="4dp"
-                android:text="原始报文 ›"
-                android:textColor="@color/rc_mint"
-                android:textSize="13sp" />
+                android:text="原始报文 ›" />
 
             <TextView
                 android:id="@+id/btnProbe"
+                style="@style/RcLink"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="10dp"
-                android:background="?android:attr/selectableItemBackground"
-                android:includeFontPadding="false"
-                android:padding="4dp"
-                android:text="推送探针 ›"
-                android:textColor="@color/rc_mint"
-                android:textSize="13sp" />
+                android:layout_marginStart="12dp"
+                android:text="推送探针 ›" />
         </LinearLayout>
 
         <ScrollView
             android:id="@+id/logScroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="10dp"
             android:layout_weight="1"
             android:scrollbars="vertical">
 
             <TextView
                 android:id="@+id/logText"
+                style="@style/RcBody"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:lineSpacingExtra="3dp"
-                android:textColor="@color/rc_muted"
-                android:textIsSelectable="false"
-                android:textSize="12sp" />
+                android:layout_height="wrap_content" />
         </ScrollView>
     </LinearLayout>
 

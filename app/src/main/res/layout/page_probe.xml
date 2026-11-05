@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 推送探针页：1920×1080 设计画布 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_screen"
     android:orientation="vertical"
-    android:paddingStart="14dp"
-    android:paddingTop="8dp"
-    android:paddingEnd="14dp"
-    android:paddingBottom="8dp">
+    android:paddingStart="36dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="36dp"
+    android:paddingBottom="20dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -17,60 +18,47 @@
         android:orientation="horizontal">
 
         <TextView
+            style="@style/RcTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:text="推送探针"
-            android:textColor="@color/rc_text"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:text="推送探针" />
 
         <TextView
             android:id="@+id/probeSummary"
-            style="@style/RcTag"
-            android:layout_marginStart="16dp"
-            android:fontFamily="monospace"
-            android:textSize="12sp" />
-
-        <Space
+            style="@style/RcValue"
             android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_weight="1"
+            android:textSize="19sp" />
 
         <TextView
             android:id="@+id/btnBackToRaw"
+            style="@style/RcLink"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackground"
-            android:includeFontPadding="false"
-            android:padding="6dp"
             android:text="报文"
-            android:textColor="@color/rc_muted"
-            android:textSize="14sp" />
+            android:textColor="@color/rc_muted" />
 
         <TextView
             android:id="@+id/btnBackFromProbe"
+            style="@style/RcLink"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:background="?android:attr/selectableItemBackground"
-            android:includeFontPadding="false"
-            android:padding="6dp"
-            android:text="返回"
-            android:textColor="@color/rc_mint"
-            android:textSize="14sp" />
+            android:layout_marginStart="12dp"
+            android:text="返回仪表盘" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="10dp"
         android:background="@color/rc_line" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="10dp"
         android:layout_weight="1"
         android:baselineAligned="false"
         android:orientation="horizontal">
@@ -81,57 +69,60 @@
             android:layout_weight="1"
             android:background="@drawable/bg_panel"
             android:orientation="vertical"
-            android:padding="8dp">
+            android:padding="16dp">
 
             <TextView
                 style="@style/RcSection"
-                android:gravity="start"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:text="签名分类 · cmd / 类型 / 长度 / 次数" />
 
             <ScrollView
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="1">
+                android:layout_marginTop="6dp"
+                android:layout_weight="1"
+                android:scrollbars="vertical">
 
                 <TextView
                     android:id="@+id/probeSigs"
+                    style="@style/RcBody"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:lineSpacingExtra="2dp"
                     android:textColor="@color/rc_text"
-                    android:textSize="11sp" />
+                    android:textSize="18sp" />
             </ScrollView>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="14dp"
             android:layout_weight="1.15"
             android:background="@drawable/bg_panel"
             android:orientation="vertical"
-            android:padding="8dp">
+            android:padding="16dp">
 
             <TextView
                 style="@style/RcSection"
-                android:gravity="start"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:text="推送流水 · 最新在下" />
 
             <ScrollView
                 android:id="@+id/probeScroll"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="1">
+                android:layout_marginTop="6dp"
+                android:layout_weight="1"
+                android:scrollbars="vertical">
 
                 <TextView
                     android:id="@+id/probeRing"
+                    style="@style/RcBody"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:lineSpacingExtra="2dp"
-                    android:textColor="@color/rc_muted"
-                    android:textSize="11sp" />
+                    android:textSize="18sp" />
             </ScrollView>
         </LinearLayout>
     </LinearLayout>
@@ -139,10 +130,10 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="10dp"
         android:includeFontPadding="false"
         android:text="出现新 cmd 或新类型 = 事件在别的包里；行数增加但 hex 相同 = 同包重复上报；完全不动 = 不经 protocol 服务"
         android:textColor="@color/rc_muted"
-        android:textSize="11sp" />
+        android:textSize="19sp" />
 
 </LinearLayout>
