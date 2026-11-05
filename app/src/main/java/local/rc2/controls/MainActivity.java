@@ -28,6 +28,7 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private static final int PAGE_DASH = 0;
     private static final int PAGE_RAW = 1;
     private static final int PAGE_PROBE = 2;
+    private static final int PAGE_SCAN = 3;
 
     private ViewFlipper pager;
     private TextView stateText;
@@ -59,6 +60,10 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private TextView probeSigs;
     private TextView probeRing;
     private ScrollView probeScroll;
+    private TextView scanSummary;
+    private TextView scanText;
+    private ScrollView scanScroll;
+    private TextView btnScanToggle;
 
     private final float[] smooth = new float[6];
     private final HashSet<String> held = new HashSet<>();
@@ -77,6 +82,10 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private long rawRevision = -1;
     private long probeSeen = -1;
     private long modeSeen = -1;
+    private long scanSeen = -1;
+    private long scanRateWindow;
+    private long priorScanTotal;
+    private int scanRate;
     private String lastStickL = "";
     private String lastStickR = "";
     private String lastDialL = "";
@@ -102,6 +111,18 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         findViewById(R.id.btnBackFromRaw).setOnClickListener(v -> show(PAGE_DASH));
         findViewById(R.id.btnBackFromProbe).setOnClickListener(v -> show(PAGE_DASH));
         findViewById(R.id.btnBackToRaw).setOnClickListener(v -> show(PAGE_RAW));
+        findViewById(R.id.btnToScan).setOnClickListener(v -> show(PAGE_SCAN));
+        findViewById(R.id.btnBackToProbe).setOnClickListener(v -> show(PAGE_PROBE));
+        findViewById(R.id.btnBackFromScan).setOnClickListener(v -> show(PAGE_DASH));
+        findViewById(R.id.btnScanToggle).setOnClickListener(v -> {
+            if (InputMonitor.scanOn) {
+                InputMonitor.stopScan();
+            } else {
+                InputMonitor.startScan();
+            }
+            scanSeen = -1;
+            refreshScan();
+        });
     }
 
     private void bind() {
@@ -135,6 +156,10 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         probeSigs = findViewById(R.id.probeSigs);
         probeRing = findViewById(R.id.probeRing);
         probeScroll = findViewById(R.id.probeScroll);
+        scanSummary = findViewById(R.id.scanSummary);
+        scanText = findViewById(R.id.scanText);
+        scanScroll = findViewById(R.id.scanScroll);
+        btnScanToggle = findViewById(R.id.btnScanToggle);
     }
 
     private void applyFullscreen() {
@@ -149,6 +174,14 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
 
     private void show(int page) {
         pager.setDisplayedChild(page);
+        if (page == PAGE_SCAN) {
+            InputMonitor.startScan();
+            scanSeen = -1;
+            refreshScan();
+        } else {
+            // 全量订阅开销大，只在查看页面时保持；离开即退订。
+            InputMonitor.stopScan();
+        }
         if (page == PAGE_RAW) {
             rawRevision = -1;
             refreshRaw();
@@ -177,6 +210,11 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     protected void onStart() {
         super.onStart();
         InputMonitor.start();
+        // 从后台回来时若正停在全量页，需要重新下发全量订阅。
+        if (pager.getDisplayedChild() == PAGE_SCAN) {
+            InputMonitor.startScan();
+            scanSeen = -1;
+        }
     }
 
     @Override
@@ -236,6 +274,8 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
                 refreshRaw();
             } else if (page == PAGE_PROBE) {
                 refreshProbe();
+            } else if (page == PAGE_SCAN) {
+                refreshScan();
             }
         }
         Choreographer.getInstance().postFrameCallback(this);
@@ -507,6 +547,65 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         }
         probeRing.setText(r);
         probeScroll.post(() -> probeScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    /**
+     * 全量报送页：列出所有到达本进程的推送通道，按接收量排序。
+     * 速率每秒结算一次；通道数或数据没变时直接返回，避免每帧重建文本。
+     */
+    private void refreshScan() {
+        long now = SystemClock.uptimeMillis();
+        long rev = InputMonitor.scanRevision;
+        boolean rateDue = now - scanRateWindow >= 1000;
+        if (!rateDue && rev == scanSeen) {
+            return;
+        }
+        if (rateDue) {
+            scanRate = (int) ((InputMonitor.scanTotal - priorScanTotal) * 1000L
+                    / Math.max(1L, now - scanRateWindow));
+            priorScanTotal = InputMonitor.scanTotal;
+            scanRateWindow = now;
+        }
+        scanSeen = rev;
+
+        List<InputMonitor.ScanSig> sigs = InputMonitor.scanSignatures();
+        scanSummary.setText(String.format(Locale.US, "%s · 总包 %d · %d 类 · %d 包/秒",
+                InputMonitor.scanState, InputMonitor.scanTotal, sigs.size(), scanRate));
+        btnScanToggle.setText(InputMonitor.scanOn ? "暂停" : "继续");
+
+        if (sigs.isEmpty()) {
+            String hint;
+            if (!InputMonitor.scanOn) {
+                hint = "未开启全量订阅";
+            } else if ("监听中".equals(InputMonitor.scanState)) {
+                hint = "已订阅全部 cmdSet / cmdId，等待推送…";
+            } else {
+                hint = InputMonitor.scanState + "，订阅未生效";
+            }
+            scanText.setText(hint);
+            return;
+        }
+
+        SpannableStringBuilder sb = new SpannableStringBuilder();
+        int limit = Math.min(sigs.size(), 90);
+        for (int i = 0; i < limit; i++) {
+            InputMonitor.ScanSig s = sigs.get(i);
+            boolean active = now - s.lastAt < 2000;
+            String head = String.format(Locale.US, "%-9s t%-3d %3dB  x%-6d c%-5d\n",
+                    s.cmd(), s.type, s.len, s.count, s.changed);
+            int start = sb.length();
+            sb.append(head);
+            sb.setSpan(new ForegroundColorSpan(active ? 0xffeff5ff : 0xff8fa6c8),
+                    start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            int hexStart = sb.length();
+            sb.append("         ").append(s.hex.isEmpty() ? "—" : s.hex).append('\n');
+            sb.setSpan(new ForegroundColorSpan(active ? 0xffb6c8e6 : 0xff7d90ad),
+                    hexStart, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        if (sigs.size() > limit) {
+            sb.append("… 另有 ").append(String.valueOf(sigs.size() - limit)).append(" 类未显示\n");
+        }
+        scanText.setText(sb);
     }
 
     private float norm(int v) {
