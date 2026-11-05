@@ -7,7 +7,6 @@ import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteException;
 import android.os.SystemClock;
-import android.util.Log;
 
 final class McuReader {
     interface Listener {
@@ -47,7 +46,7 @@ final class McuReader {
                         }
                     }
                 } catch (Exception e) {
-                    Log.e("RC2Buttons", "Push decode", e);
+                    UiLog.e("MCU", "按键推送解码失败", e);
                 }
             }
             return true;
@@ -165,9 +164,9 @@ final class McuReader {
             data.writeStrongBinder(pushes);
             service.transact(2, data, reply, 0);
             reply.readException();
-            Log.i("RC2Buttons", "Read-only RC 6/174 button listener ready");
+            UiLog.i("MCU", "按键订阅就绪（6/174）");
         } catch (Exception e) {
-            Log.e("RC2Buttons", "Subscribe", e);
+            UiLog.e("MCU", "按键订阅失败", e);
         } finally {
             data.recycle();
             reply.recycle();

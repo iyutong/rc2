@@ -9,24 +9,31 @@ import android.graphics.RadialGradient;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.os.SystemClock;
-import android.util.Log;
 import android.view.Choreographer;
+import android.view.MotionEvent;
 import android.view.View;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import org.json.JSONObject;
 
 /**
- * 只读仪表盘：绘制左右摇杆、拨轮与五个功能键的实时状态。
- * 不再有按钮、映射箭头或输出状态。
+ * 只读仪表盘：绘制左右摇杆、拨轮、五个功能键以及运行日志。
+ * 底部日志区支持上下拖动翻看历史。
  */
 public final class DashboardView extends View implements Choreographer.FrameCallback {
+
+    private static final int LOG_LINES = 3;
+    private static final float LOG_TOP = 1002f;
+    private static final float LOG_STEP = 22f;
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     private final Typeface regular = Typeface.create("sans-serif", Typeface.NORMAL);
     private final Typeface fixed = Typeface.MONOSPACE;
     private final HashSet<String> held = new HashSet<>();
     private final float[] smooth = new float[6];
+    private final List<UiLog.Entry> logEntries = new ArrayList<>();
     private long seenRevision = -1;
     private Bitmap backdrop;
     private float scale = 1f;
@@ -36,12 +43,18 @@ public final class DashboardView extends View implements Choreographer.FrameCall
     private boolean dirty = true;
     private long lastFrame;
     private long drawWindow;
+    private long logWindow;
     private int draws;
     private float fps;
     private long priorSamples;
     private long sampleWindow;
     private float inputHz;
-    private String lastKey = "等待按下实体按键";
+    private long logRevision = -1;
+    private int logOffset;
+    private int logOffsetSeen = -1;
+    private int logSize;
+    private boolean draggingLog;
+    private float dragY;
     private final int white = 0xffeff5ff;
     private final int muted = 0xffacbfdf;
     private final int mint = 0xff88ffe2;
@@ -173,7 +186,6 @@ public final class DashboardView extends View implements Choreographer.FrameCall
                     held.add(def);
                 }
             }
-            lastKey = InputMonitor.lastKey();
         }
     }
 
@@ -247,8 +259,8 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         c.drawRect(0f, 0f, 1920f, 1080f, p);
         p.setShader(null);
         text(c, "RC2  /  输入监视", 65f, 73f, 31f, white, Paint.Align.LEFT);
-        text(c, "只读面板 · 无输出", 1845f, 71f, 21f, muted, Paint.Align.RIGHT);
         line(c, 65f, 122f, 1855f, 122f, 0x407ba3df, 1f);
+        line(c, 65f, LOG_TOP, 1855f, LOG_TOP, 0x407ba3df, 1f);
         round(c, 90f, 160f, 750f, 1000f, 28f, 0x0aebf5ff);
         round(c, 1170f, 160f, 1830f, 1000f, 28f, 0x0aebf5ff);
         text(c, "左侧按键", 420f, 195f, 28f, white, Paint.Align.CENTER);
@@ -313,6 +325,97 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         mono(c, "MCU " + InputMonitor.lastMcuFrame, 960f, 976f, 14f);
     }
 
+    private void refreshLog() {
+        List<UiLog.Entry> all = UiLog.snapshot();
+        if (logOffset > 0 && all.size() > logSize) {
+            logOffset += all.size() - logSize;
+        }
+        logSize = all.size();
+        int max = Math.max(0, all.size() - LOG_LINES);
+        logOffset = Math.max(0, Math.min(logOffset, max));
+        int end = Math.max(0, all.size() - logOffset);
+        int start = Math.max(0, end - LOG_LINES);
+        logEntries.clear();
+        for (int i = start; i < end; i++) {
+            logEntries.add(all.get(i));
+        }
+    }
+
+    private void logPanel(Canvas c) {
+        if (logRevision != UiLog.revision || logOffsetSeen != logOffset) {
+            logRevision = UiLog.revision;
+            logOffsetSeen = logOffset;
+            refreshLog();
+        }
+        if (logEntries.isEmpty()) {
+            text(c, "暂无日志", 65f, 1024f, 17f, muted, Paint.Align.LEFT);
+            return;
+        }
+        p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
+        p.setTypeface(fixed);
+        p.setTextSize(16f);
+        p.setTextAlign(Paint.Align.LEFT);
+        for (int i = 0; i < logEntries.size(); i++) {
+            UiLog.Entry e = logEntries.get(i);
+            p.setColor(e.level == 'E' ? 0xffff9a9a : (e.level == 'W' ? 0xffffd48a : muted));
+            c.drawText(clip(e.line, 110), 65f, 1024f + i * LOG_STEP, p);
+        }
+        if (logOffset > 0) {
+            text(c, "已上翻 " + logOffset + " 条 · 向下拖动回到底部",
+                    1845f, 992f, 15f, 0xffffd48a, Paint.Align.RIGHT);
+        }
+    }
+
+    private String clip(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent e) {
+        float y = (e.getY() - oy) / scale;
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                if (y > 950f) {
+                    draggingLog = true;
+                    dragY = y;
+                    if (getParent() != null) {
+                        getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                    return true;
+                }
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (draggingLog) {
+                    int steps = (int) ((y - dragY) / LOG_STEP);
+                    if (steps != 0) {
+                        logOffset -= steps;
+                        dragY = y;
+                        invalidate();
+                    }
+                    return true;
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (draggingLog) {
+                    draggingLog = false;
+                    dragY = 0f;
+                    return true;
+                }
+                break;
+            default:
+                break;
+        }
+        return super.onTouchEvent(e);
+    }
+
+    @Override
+    public boolean performClick() {
+        super.performClick();
+        return true;
+    }
+
     @Override
     protected void onDraw(Canvas c) {
         super.onDraw(c);
@@ -345,7 +448,10 @@ public final class DashboardView extends View implements Choreographer.FrameCall
             inputHz = (InputMonitor.samples - priorSamples) * 1000f / Math.max(1L, now - sampleWindow);
             priorSamples = InputMonitor.samples;
             sampleWindow = now;
-            Log.i("RC2Frames", "draw_fps=" + fps + " input_hz=" + inputHz);
+            if (now - logWindow >= 5000) {
+                logWindow = now;
+                UiLog.i("Frames", String.format(Locale.US, "%.0f FPS · %.0f Hz", fps, inputHz));
+            }
         }
 
         boolean live = InputMonitor.live();
@@ -353,6 +459,7 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         c.drawCircle(661f, 63f, 6f, p);
         text(c, live ? "本机实时输入" : "等待 MCU", 680f, 71f, 22f, muted, Paint.Align.LEFT);
         text(c, String.format(Locale.US, "%.0f FPS  /  %.0f Hz", fps, inputHz), 1120f, 71f, 20f, muted, Paint.Align.RIGHT);
+        text(c, clip(InputMonitor.status, 32), 1845f, 71f, 19f, muted, Paint.Align.RIGHT);
 
         allKeys(c);
         int[] ch = InputMonitor.channels;
@@ -361,8 +468,7 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         dial(c, 420f, smooth[4], ch[4]);
         dial(c, 1500f, smooth[5], ch[5]);
         raw(c, ch);
-        text(c, lastKey, 65f, 1042f, 22f, muted, Paint.Align.LEFT);
-        text(c, InputMonitor.status, 1845f, 1042f, 21f, muted, Paint.Align.RIGHT);
+        logPanel(c);
         c.restore();
     }
 }

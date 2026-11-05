@@ -56,8 +56,10 @@ public final class InputMonitor {
             @Override
             public void error(String msg) {
                 status = msg;
+                UiLog.e("MCU", msg);
             }
         });
+        UiLog.i("Input", "开始监听 MCU");
     }
 
     public static synchronized void stop() {
@@ -69,6 +71,7 @@ public final class InputMonitor {
         pressed.clear();
         priorMcu = -1;
         keyRevision++;
+        UiLog.i("Input", "停止监听");
     }
 
     public static boolean running() {
@@ -89,6 +92,7 @@ public final class InputMonitor {
         int prev = priorMcu;
         priorMcu = mask;
         if (prev < 0) {
+            UiLog.i("MCU", "已收到按键推送");
             return;
         }
         String[] names = new String[]{"C1", "C2", "拍照", "录像", "返航/暂停"};
@@ -121,6 +125,7 @@ public final class InputMonitor {
         }
         if (down) {
             pressed.add(id);
+            UiLog.i("MCU", "按键 " + name + " 按下");
         } else {
             pressed.remove(id);
         }
@@ -156,6 +161,10 @@ public final class InputMonitor {
         }
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             pressed.add(id);
+            if (e.getRepeatCount() == 0) {
+                UiLog.i("Key", devName + " · " + KeyEvent.keyCodeToString(e.getKeyCode())
+                        + " · scan " + e.getScanCode());
+            }
         } else if (e.getAction() == KeyEvent.ACTION_UP) {
             pressed.remove(id);
         }
