@@ -3,8 +3,10 @@ package local.rc2.controls;
 import android.os.SystemClock;
 import android.view.KeyEvent;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import org.json.JSONObject;
 
@@ -21,6 +23,17 @@ public final class InputMonitor {
     public static volatile long keyRevision;
     /** 最近一帧 MCU 按键原始报文的十六进制形式，仅供面板显示。 */
     public static volatile String lastMcuFrame = "—";
+    /** 最新一帧完整按键报文，供原始报文页逐字节查看。 */
+    public static volatile byte[] lastPayload = new byte[0];
+    /** 与上一变化帧相比的差异位，例如 "b2.4 b1.0"。 */
+    public static volatile String lastDiff = "—";
+    public static volatile int frameCount;
+    public static volatile long payloadRevision;
+
+    private static final int FRAME_HISTORY = 16;
+    private static final ArrayList<byte[]> frames = new ArrayList<>(FRAME_HISTORY);
+    private static byte[] priorPayload;
+
     public static final LinkedHashMap<String, JSONObject> observed = new LinkedHashMap<>();
     public static final HashSet<String> pressed = new HashSet<>();
     public static final ArrayList<JSONObject> history = new ArrayList<>();
@@ -86,7 +99,8 @@ public final class InputMonitor {
         if (b.length < 5) {
             return;
         }
-        lastMcuFrame = hex(b);
+        trackPayload(b);
+        lastMcuFrame = hex(b, 64);
         mcuButtonsAt = SystemClock.uptimeMillis();
         int mask = (b[0] & 0x70) | ((b[2] & 0x0c) << 8) | ((b[1] & 0x01) << 16);
         int prev = priorMcu;
@@ -181,8 +195,66 @@ public final class InputMonitor {
         }
     }
 
-    private static String hex(byte[] b) {
-        int n = Math.min(b.length, 10);
+    /** 每帧都计数，只有内容变化时才入历史并记录差异位。 */
+    private static synchronized void trackPayload(byte[] b) {
+        frameCount++;
+        if (priorPayload != null && Arrays.equals(priorPayload, b)) {
+            return;
+        }
+        lastDiff = diff(priorPayload, b);
+        priorPayload = b.clone();
+        lastPayload = priorPayload;
+        frames.add(b.clone());
+        if (frames.size() > FRAME_HISTORY) {
+            frames.remove(0);
+        }
+        payloadRevision++;
+        UiLog.i("MCU", "报文变化 " + b.length + "B · " + lastDiff);
+    }
+
+    /** 当前帧副本，避免 UI 侧被后续写入影响。 */
+    public static synchronized byte[] payload() {
+        return lastPayload.clone();
+    }
+
+    /** 面板里用的短十六进制（前 8 字节）。 */
+    public static synchronized String shortFrame() {
+        return hex(lastPayload, 8);
+    }
+
+    /** 内容发生变化的帧，按时间升序，最多 16 条。 */
+    public static synchronized List<byte[]> frameHistory() {
+        return new ArrayList<>(frames);
+    }
+
+    private static String diff(byte[] a, byte[] b) {
+        if (a == null) {
+            return "首帧";
+        }
+        StringBuilder sb = new StringBuilder();
+        int n = Math.min(a.length, b.length);
+        for (int i = 0; i < n; i++) {
+            int x = (a[i] ^ b[i]) & 0xff;
+            for (int bit = 0; bit < 8; bit++) {
+                if ((x & (1 << bit)) != 0) {
+                    if (sb.length() > 0) {
+                        sb.append(' ');
+                    }
+                    sb.append('b').append(i).append('.').append(bit);
+                }
+            }
+        }
+        if (a.length != b.length) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append("长度 ").append(a.length).append('→').append(b.length);
+        }
+        return sb.length() == 0 ? "无变化" : sb.toString();
+    }
+
+    private static String hex(byte[] b, int max) {
+        int n = Math.min(b.length, max);
         StringBuilder sb = new StringBuilder(n * 3);
         for (int i = 0; i < n; i++) {
             if (i > 0) {

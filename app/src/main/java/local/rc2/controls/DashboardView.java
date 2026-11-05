@@ -55,6 +55,13 @@ public final class DashboardView extends View implements Choreographer.FrameCall
     private int logSize;
     private boolean draggingLog;
     private float dragY;
+    private boolean rawPage;
+    private Bitmap rawBackdrop;
+    private long rawRevision = -1;
+    private byte[] rawPayload = new byte[0];
+    private String rawDiff = "—";
+    private List<byte[]> rawHistory = new ArrayList<>();
+    private final HashSet<Integer> changedBytes = new HashSet<>();
     private final int white = 0xffeff5ff;
     private final int muted = 0xffacbfdf;
     private final int mint = 0xff88ffe2;
@@ -77,6 +84,10 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         if (backdrop != null) {
             backdrop.recycle();
             backdrop = null;
+        }
+        if (rawBackdrop != null) {
+            rawBackdrop.recycle();
+            rawBackdrop = null;
         }
         super.onDetachedFromWindow();
     }
@@ -270,7 +281,7 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         disk(c, "左摇杆", 420f);
         disk(c, "右摇杆", 1500f);
         round(c, 765f, 726f, 1155f, 992f, 18f, 0x12ebf5ff);
-        text(c, "原始数据 · 0–2047", 960f, 758f, 21f, muted, Paint.Align.CENTER);
+        text(c, "原始数据 · 点按查看报文", 960f, 758f, 20f, muted, Paint.Align.CENTER);
         line(c, 795f, 782f, 1125f, 782f, 0x3a7ba3df, 1f);
         line(c, 800f, 872f, 1120f, 872f, 0x267ba3df, 1f);
         dialBase(c, "左拨轮", 420f);
@@ -315,14 +326,14 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         JSONObject j = InputMonitor.lastEvent();
         if (j == null) {
             text(c, "尚未收到按键", 960f, 912f, 18f, muted, Paint.Align.CENTER);
-            mono(c, "MCU " + InputMonitor.lastMcuFrame, 960f, 958f, 14f);
+            mono(c, "MCU " + InputMonitor.shortFrame(), 960f, 958f, 14f);
             return;
         }
         text(c, "键 " + j.optString("keyName"), 960f, 900f, 18f, white, Paint.Align.CENTER);
         text(c, "code " + j.optInt("keyCode", -1) + "  ·  scan " + j.optInt("scanCode", 0),
                 960f, 926f, 18f, muted, Paint.Align.CENTER);
         text(c, j.optString("device"), 960f, 950f, 17f, muted, Paint.Align.CENTER);
-        mono(c, "MCU " + InputMonitor.lastMcuFrame, 960f, 976f, 14f);
+        mono(c, "MCU " + InputMonitor.shortFrame(), 960f, 976f, 14f);
     }
 
     private void refreshLog() {
@@ -373,7 +384,16 @@ public final class DashboardView extends View implements Choreographer.FrameCall
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
+        float x = (e.getX() - ox) / scale;
         float y = (e.getY() - oy) / scale;
+        if (rawPage) {
+            if (e.getActionMasked() == MotionEvent.ACTION_UP && x > 1650f && y < 115f) {
+                rawPage = false;
+                invalidate();
+                return true;
+            }
+            return true;
+        }
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (y > 950f) {
@@ -397,6 +417,18 @@ public final class DashboardView extends View implements Choreographer.FrameCall
                 }
                 break;
             case MotionEvent.ACTION_UP:
+                if (draggingLog) {
+                    draggingLog = false;
+                    dragY = 0f;
+                    return true;
+                }
+                if (x > 765f && x < 1155f && y > 726f && y < 950f) {
+                    rawPage = true;
+                    rawRevision = -1;
+                    invalidate();
+                    return true;
+                }
+                break;
             case MotionEvent.ACTION_CANCEL:
                 if (draggingLog) {
                     draggingLog = false;
@@ -421,9 +453,6 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         super.onDraw(c);
         InputMonitor.expireMcu();
         metadata();
-        if (backdrop == null) {
-            buildBackdrop();
-        }
         c.drawColor(0xff2c4b7b);
         scale = Math.min(getWidth() / 1920f, getHeight() / 1080f);
         ox = (getWidth() - scale * 1920f) / 2f;
@@ -434,6 +463,18 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         p.setShader(null);
         p.setColor(white);
         p.setStyle(Paint.Style.FILL);
+        if (rawPage) {
+            drawRawPage(c);
+        } else {
+            drawDashboard(c);
+        }
+        c.restore();
+    }
+
+    private void drawDashboard(Canvas c) {
+        if (backdrop == null) {
+            buildBackdrop();
+        }
         c.drawBitmap(backdrop, 0f, 0f, p);
 
         long now = SystemClock.uptimeMillis();
@@ -459,7 +500,7 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         c.drawCircle(661f, 63f, 6f, p);
         text(c, live ? "本机实时输入" : "等待 MCU", 680f, 71f, 22f, muted, Paint.Align.LEFT);
         text(c, String.format(Locale.US, "%.0f FPS  /  %.0f Hz", fps, inputHz), 1120f, 71f, 20f, muted, Paint.Align.RIGHT);
-        text(c, clip(InputMonitor.status, 32), 1845f, 71f, 19f, muted, Paint.Align.RIGHT);
+        text(c, clip(InputMonitor.status, 26), 1845f, 71f, 19f, muted, Paint.Align.RIGHT);
 
         allKeys(c);
         int[] ch = InputMonitor.channels;
@@ -469,6 +510,118 @@ public final class DashboardView extends View implements Choreographer.FrameCall
         dial(c, 1500f, smooth[5], ch[5]);
         raw(c, ch);
         logPanel(c);
-        c.restore();
+    }
+
+    private void buildRawBackdrop() {
+        if (rawBackdrop != null) {
+            rawBackdrop.recycle();
+        }
+        rawBackdrop = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(rawBackdrop);
+        p.setShader(new LinearGradient(
+                0f, 0f, 1920f, 1080f,
+                new int[]{0xff283f6e, 0xff34598f, 0xff20385e},
+                null,
+                Shader.TileMode.CLAMP));
+        c.drawRect(0f, 0f, 1920f, 1080f, p);
+        p.setShader(null);
+        text(c, "RC2  /  按键原始报文", 65f, 73f, 31f, white, Paint.Align.LEFT);
+        text(c, "返回仪表盘", 1845f, 71f, 22f, mint, Paint.Align.RIGHT);
+        line(c, 65f, 122f, 1855f, 122f, 0x407ba3df, 1f);
+        text(c, "当前帧 · 未解析字节", 65f, 170f, 24f, muted, Paint.Align.LEFT);
+        text(c, "变化帧（最新在上）", 980f, 170f, 24f, muted, Paint.Align.LEFT);
+        line(c, 65f, 186f, 1855f, 186f, 0x267ba3df, 1f);
+        text(c, "黄色 = 与上一条变化帧不同的字节；b<索引>.<位> 中位 0 为最低位", 65f, 998f, 18f, muted, Paint.Align.LEFT);
+        text(c, "现有解析 mask = b0&0x70 | (b2&0x0C)<<8 | (b1&0x01)<<16，拍照位 0x40", 65f, 1030f, 18f, muted, Paint.Align.LEFT);
+    }
+
+    private void refreshRaw() {
+        rawPayload = InputMonitor.payload();
+        rawDiff = InputMonitor.lastDiff;
+        rawHistory = InputMonitor.frameHistory();
+        changedBytes.clear();
+        if (rawHistory.size() >= 2) {
+            byte[] prev = rawHistory.get(rawHistory.size() - 2);
+            byte[] cur = rawHistory.get(rawHistory.size() - 1);
+            int n = Math.min(prev.length, cur.length);
+            for (int i = 0; i < n; i++) {
+                if (prev[i] != cur[i]) {
+                    changedBytes.add(i);
+                }
+            }
+        }
+    }
+
+    private void drawRawPage(Canvas c) {
+        if (rawBackdrop == null) {
+            buildRawBackdrop();
+        }
+        c.drawBitmap(rawBackdrop, 0f, 0f, p);
+        if (rawRevision != InputMonitor.payloadRevision) {
+            rawRevision = InputMonitor.payloadRevision;
+            refreshRaw();
+        }
+        text(c, String.format(Locale.US, "总帧 %d · %d 字节 · 最近变化 %s",
+                InputMonitor.frameCount, rawPayload.length, rawDiff),
+                65f, 214f, 20f, white, Paint.Align.LEFT);
+        if (rawPayload.length == 0) {
+            text(c, "尚未收到按键报文", 65f, 270f, 22f, muted, Paint.Align.LEFT);
+            return;
+        }
+        p.setShader(null);
+        p.setStyle(Paint.Style.FILL);
+        p.setTypeface(fixed);
+        p.setTextSize(20f);
+        p.setTextAlign(Paint.Align.LEFT);
+        int perRow = 12;
+        int rows = (rawPayload.length + perRow - 1) / perRow;
+        for (int r = 0; r < rows; r++) {
+            float y = 264f + r * 34f;
+            p.setColor(muted);
+            c.drawText(String.format(Locale.US, "%02X", r * perRow), 65f, y, p);
+            for (int col = 0; col < perRow; col++) {
+                int i = r * perRow + col;
+                if (i >= rawPayload.length) {
+                    break;
+                }
+                p.setColor(changedBytes.contains(i) ? 0xffffd48a : white);
+                c.drawText(String.format(Locale.US, "%02X", rawPayload[i] & 0xff),
+                        125f + col * 46f, y, p);
+            }
+        }
+        float binTop = 264f + rows * 34f + 18f;
+        text(c, "逐位（低位在右）", 65f, binTop, 20f, muted, Paint.Align.LEFT);
+        p.setTypeface(fixed);
+        p.setTextSize(18f);
+        p.setTextAlign(Paint.Align.LEFT);
+        int n = Math.min(rawPayload.length, 12);
+        for (int i = 0; i < n; i++) {
+            int v = rawPayload[i] & 0xff;
+            String bits = String.format(Locale.US, "%8s", Integer.toBinaryString(v | 0x100)).substring(1);
+            p.setColor(changedBytes.contains(i) ? 0xffffd48a : white);
+            c.drawText(String.format(Locale.US, "b%-2d  %s  %02X", i, bits, v),
+                    65f, binTop + 26f + i * 28f, p);
+        }
+        p.setTypeface(fixed);
+        p.setTextSize(19f);
+        int shown = Math.min(rawHistory.size(), 14);
+        for (int r = 0; r < shown; r++) {
+            byte[] f = rawHistory.get(rawHistory.size() - 1 - r);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < f.length && i < 10; i++) {
+                if (i > 0) {
+                    sb.append(' ');
+                }
+                sb.append(String.format(Locale.US, "%02X", f[i] & 0xff));
+            }
+            if (f.length > 10) {
+                sb.append(" …");
+            }
+            p.setColor(r == 0 ? white : muted);
+            c.drawText(sb.toString(), 980f, 220f + r * 30f, p);
+        }
+        if (rawHistory.isEmpty()) {
+            text(c, "还没有变化帧", 980f, 224f, 19f, muted, Paint.Align.LEFT);
+        }
     }
 }
