@@ -23,15 +23,8 @@ final class McuReader {
     private volatile boolean waiting;
     private long sentAt;
 
+    /** 按键推送接收端：订阅 cmdSet 6 / cmd 174，只处理这一条通道。 */
     private final Binder pushes = new Binder() {
-        @Override
-        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
-            return onPush(code, data, reply);
-        }
-    };
-
-    /** 追加的通配订阅（cmdSet 6 下任意 cmd），只为观察半按是否走了别的包号。 */
-    private final Binder wide = new Binder() {
         @Override
         protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
             return onPush(code, data, reply);
@@ -121,7 +114,6 @@ final class McuReader {
                 throw new Exception("protocol service unavailable");
             }
             subscribe();
-            subscribeWide();
             poll();
         } catch (Exception e) {
             listener.error("MCU 接口不可用：" + e);
@@ -189,33 +181,6 @@ final class McuReader {
         }
     }
 
-    /**
-     * 追加一个 cmdSet=6、cmd 不限的订阅。若服务端把 -1 当通配，
-     * 半按若走的是另一个 cmd 就能在探针页看到；不支持则只留一条警告，不影响原订阅。
-     */
-    private void subscribeWide() {
-        Parcel data = Parcel.obtain();
-        Parcel reply = Parcel.obtain();
-        try {
-            data.writeInterfaceToken("com.dji.protocol.IProtocolManager");
-            data.writeInt(1);
-            data.writeInt(1);
-            int[] filter = new int[]{4, 2, 0, 6, 6, -1};
-            for (int v : filter) {
-                data.writeInt(v);
-            }
-            data.writeStrongBinder(wide);
-            service.transact(2, data, reply, 0);
-            reply.readException();
-            UiLog.i("MCU", "追加通配订阅（6/-1）");
-        } catch (Exception e) {
-            UiLog.w("MCU", "通配订阅未生效：" + e.getClass().getSimpleName());
-        } finally {
-            data.recycle();
-            reply.recycle();
-        }
-    }
-
     void stop() {
         running = false;
         worker.removeCallbacksAndMessages(null);
@@ -231,18 +196,6 @@ final class McuReader {
             } finally {
                 data.recycle();
                 reply.recycle();
-            }
-            Parcel d2 = Parcel.obtain();
-            Parcel r2 = Parcel.obtain();
-            try {
-                d2.writeInterfaceToken("com.dji.protocol.IProtocolManager");
-                d2.writeStrongBinder(wide);
-                service.transact(5, d2, r2, 0);
-                r2.readException();
-            } catch (Exception ignored) {
-            } finally {
-                d2.recycle();
-                r2.recycle();
             }
         }
         thread.quitSafely();
