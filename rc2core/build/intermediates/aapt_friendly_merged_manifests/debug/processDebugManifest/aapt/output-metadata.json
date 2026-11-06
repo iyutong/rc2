@@ -4,7 +4,7 @@
     "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
     "kind": "Directory"
   },
-  "applicationId": "local.rc2.core",
+  "applicationId": "cn.iyutong.rc2core",
   "variantName": "debug",
   "elements": [
     {

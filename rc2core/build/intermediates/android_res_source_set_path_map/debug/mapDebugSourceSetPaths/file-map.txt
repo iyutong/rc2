@@ -1,9 +1,9 @@
-local.rc2.core.rc2core-pngs-0 D:\Project\AndroidStudio\RC2\rc2core\build\generated\res\pngs\debug
-local.rc2.core.rc2core-updated_navigation_xml-1 D:\Project\AndroidStudio\RC2\rc2core\build\generated\updated_navigation_xml\debug
-local.rc2.core.rc2core-mergeDebugResources-2 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\incremental\debug\mergeDebugResources\merged.dir
-local.rc2.core.rc2core-mergeDebugResources-3 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\incremental\debug\mergeDebugResources\stripped.dir
-local.rc2.core.rc2core-debug-4 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\merged_res\debug\mergeDebugResources
-local.rc2.core.rc2core-debug-5 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\packaged_res\debug\packageDebugResources
-local.rc2.core.rc2core-debug-6 D:\Project\AndroidStudio\RC2\rc2core\src\debug\res
-local.rc2.core.rc2core-main-7 D:\Project\AndroidStudio\RC2\rc2core\src\main\res
+cn.iyutong.rc2core-pngs-0 D:\Project\AndroidStudio\RC2\rc2core\build\generated\res\pngs\debug
+cn.iyutong.rc2core-updated_navigation_xml-1 D:\Project\AndroidStudio\RC2\rc2core\build\generated\updated_navigation_xml\debug
+cn.iyutong.rc2core-mergeDebugResources-2 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\incremental\debug\mergeDebugResources\merged.dir
+cn.iyutong.rc2core-mergeDebugResources-3 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\incremental\debug\mergeDebugResources\stripped.dir
+cn.iyutong.rc2core-debug-4 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\merged_res\debug\mergeDebugResources
+cn.iyutong.rc2core-debug-5 D:\Project\AndroidStudio\RC2\rc2core\build\intermediates\packaged_res\debug\packageDebugResources
+cn.iyutong.rc2core-debug-6 D:\Project\AndroidStudio\RC2\rc2core\src\debug\res
+cn.iyutong.rc2core-main-7 D:\Project\AndroidStudio\RC2\rc2core\src\main\res
 gradleHome-0 C:\Users\24227\.gradle

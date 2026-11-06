@@ -8,7 +8,7 @@ import android.widget.TextView;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import local.rc2.core.Rc2Controller;
+import cn.iyutong.rc2core.Rc2Controller;
 import local.rc2.xbox.R;
 
 /**

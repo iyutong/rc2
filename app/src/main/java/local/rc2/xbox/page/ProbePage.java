@@ -6,8 +6,8 @@ import android.widget.TextView;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import local.rc2.core.Rc2Controller;
-import local.rc2.core.Rc2Packet;
+import cn.iyutong.rc2core.Rc2Controller;
+import cn.iyutong.rc2core.Rc2Packet;
 import local.rc2.xbox.R;
 
 /**

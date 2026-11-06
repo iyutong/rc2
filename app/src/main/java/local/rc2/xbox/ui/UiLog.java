@@ -20,7 +20,7 @@ public final class UiLog {
     private static final ArrayDeque<Entry> ENTRIES = new ArrayDeque<>(CAPACITY);
 
     /** 给 {@code Rc2Config#logger} 用的出口。 */
-    public static final local.rc2.core.Rc2Log SINK = new local.rc2.core.Rc2Log() {
+    public static final cn.iyutong.rc2core.Rc2Log SINK = new cn.iyutong.rc2core.Rc2Log() {
         @Override
         public void log(char level, String tag, String message) {
             UiLog.add(level, tag, message);

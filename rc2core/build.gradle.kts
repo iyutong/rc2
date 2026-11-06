@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "local.rc2.core"
+    namespace = "cn.iyutong.rc2core"
     compileSdk {
         version = release(37)
     }

@@ -7,8 +7,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ViewFlipper;
-import local.rc2.core.Rc2Config;
-import local.rc2.core.Rc2Controller;
+import cn.iyutong.rc2core.Rc2Config;
+import cn.iyutong.rc2core.Rc2Controller;
 import local.rc2.xbox.page.DashboardPage;
 import local.rc2.xbox.page.ProbePage;
 import local.rc2.xbox.page.RawPage;
@@ -18,7 +18,7 @@ import local.rc2.xbox.ui.UiLog;
 /**
  * 宿主：只负责页面切换、生命周期和帧循环。
  *
- * <p>数据来自 {@link Rc2Controller}（{@code local.rc2.core}），界面拆成三个 page 类：
+ * <p>数据来自 {@link Rc2Controller}（{@code cn.iyutong.rc2core}），界面拆成三个 page 类：
  * 仪表盘 / 原始报文 / 推送探针。三层之间只通过 Rc2Controller 的 getter 耦合，
  * 想换 UI 不用碰协议，想换协议不用碰 UI。
  */
