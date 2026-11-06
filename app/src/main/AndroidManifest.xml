@@ -2,6 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        USB 输入通道的前提：本机要有 USB 主机控制器。
+        required=false：没有 Host 能力时仍允许安装，只是通道打不开，
+        界面上会明确写出「未暴露 USB Host」。
+    -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+
     <application
         android:theme="@style/Theme.Rc2"
         android:label="RC2 输入监视"
@@ -16,7 +25,32 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+                「默认打开」路线：设备插入时系统询问用哪个应用处理。
+                用户勾选「默认使用本应用」后，该设备的 hasPermission() 直接为 true，
+                从此不再弹授权框。这是定制固件里授权界面被裁掉时的唯一免 root 出路。
+            -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
         </activity>
+
+        <!--
+            USB 授权结果接收器：必须静态声明。
+            requestPermission 的 PendingIntent 指向它，走组件广播路径，
+            不受动态注册在 Android 13+ 上的 flag 限制；进程被杀也能拉起投递。
+        -->
+        <receiver
+            android:name="cn.iyutong.rc2core.usb.UsbPermissionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="cn.iyutong.rc2core.action.USB_PERMISSION" />
+            </intent-filter>
+        </receiver>
 
         <!--
             快门半按探针：带按键过滤的无障碍服务。

@@ -3,7 +3,7 @@ package cn.iyutong.rc2core;
 /**
  * 回调集合，全部是 default 方法：按需覆写，不用搭空实现。
  *
- * <p><b>线程</b>：默认在内部线程回调（Binder 线程 / 轮询线程）。
+ * <p><b>线程</b>：默认在 USB 读线程回调。
  * 想在主线程收回调，创建控制器时传 {@code Rc2Config.builder().callbackHandler(
  * new Handler(Looper.getMainLooper()))}。
  *
@@ -28,7 +28,7 @@ public interface Rc2Listener {
     default void onReady(boolean ready, String detail) {
     }
 
-    /** 摇杆/拨轮采样，频率等于 {@link Rc2Config#pollIntervalMs}。 */
+    /** 摇杆/拨轮采样。节奏由设备上报决定（USB 帧驱动），通常是几十 Hz。 */
     default void onSticks(Sticks sticks) {
     }
 

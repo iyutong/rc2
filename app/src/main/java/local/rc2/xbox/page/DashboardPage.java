@@ -268,7 +268,7 @@ public final class DashboardPage {
         return String.format(Locale.US, "0x%02X (%d)  MCU %d", byteVal, byteVal, s.raw(channel));
     }
 
-    /** 快门探针：只认 Android 层的 FOCUS / CAMERA 两个键码。 */
+    /** 快门探针：半按来自 USB 学习位，全按来自 USB 按键帧。 */
     private void tickShutter(Rc2Controller rc2) {
         ShutterProbe probe = rc2.shutter();
         String text;

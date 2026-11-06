@@ -39,7 +39,7 @@ public final class RawPage {
         seen = rev;
 
         byte[] payload = rc2.rawButtons();
-        summary.setText(String.format(Locale.US, "推送 %d · %d 字节 · 变化 %s",
+        summary.setText(String.format(Locale.US, "帧 %d · %d 字节 · 变化 %s",
                 rev, payload.length, rc2.lastDiff()));
         if (payload.length == 0) {
             body.setText("尚未收到按键报文");

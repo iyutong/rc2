@@ -9,12 +9,11 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ViewFlipper;
-import cn.iyutong.rc2core.ProtocolSniffer;
 import cn.iyutong.rc2core.Rc2Config;
 import cn.iyutong.rc2core.Rc2Controller;
 import local.rc2.xbox.page.DashboardPage;
 import local.rc2.xbox.page.RawPage;
-import local.rc2.xbox.page.SniffPage;
+import local.rc2.xbox.page.UsbPage;
 import local.rc2.xbox.ui.Ui;
 import local.rc2.xbox.ui.UiLog;
 
@@ -29,14 +28,13 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
 
     private static final int PAGE_DASH = 0;
     private static final int PAGE_RAW = 1;
-    private static final int PAGE_SNIFF = 2;
+    private static final int PAGE_USB = 2;
 
     private ViewFlipper pager;
     private Rc2Controller rc2;
     private DashboardPage dashboard;
     private RawPage rawPage;
-    private SniffPage sniffPage;
-    private ProtocolSniffer sniffer;
+    private UsbPage usbPage;
 
     private boolean animating;
     private long lastFrame;
@@ -59,20 +57,21 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
 
         dashboard = new DashboardPage(findViewById(R.id.pager));
         rawPage = new RawPage(findViewById(R.id.pager));
-        sniffer = new ProtocolSniffer();
-        sniffPage = new SniffPage(findViewById(R.id.pager), sniffer);
+        usbPage = new UsbPage(findViewById(R.id.pager), this);
 
         rc2 = Rc2Controller.create(Rc2Config.builder()
+                .context(this)
                 .logger(UiLog.SINK)
                 .build());
+        usbPage.attach(rc2);
 
         // 半按探针依赖无障碍按键过滤：点「快门」徽标直接跳到开启页面
         findViewById(R.id.shutterText).setOnClickListener(v ->
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         findViewById(R.id.btnRaw).setOnClickListener(v -> show(PAGE_RAW));
         findViewById(R.id.btnBackFromRaw).setOnClickListener(v -> show(PAGE_DASH));
-        findViewById(R.id.btnHunt).setOnClickListener(v -> show(PAGE_SNIFF));
-        findViewById(R.id.btnBackFromSniff).setOnClickListener(v -> show(PAGE_DASH));
+        findViewById(R.id.btnUsb).setOnClickListener(v -> show(PAGE_USB));
+        findViewById(R.id.btnBackFromUsb).setOnClickListener(v -> show(PAGE_DASH));
     }
 
     private void applyFullscreen() {
@@ -89,9 +88,8 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         pager.setDisplayedChild(page);
         if (page == PAGE_RAW) {
             rawPage.refresh(rc2);
-        } else if (page == PAGE_SNIFF) {
-            sniffer.tick();
-            sniffPage.refresh();
+        } else if (page == PAGE_USB) {
+            usbPage.refresh();
         }
     }
 
@@ -115,12 +113,10 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     protected void onStart() {
         super.onStart();
         rc2.start();
-        sniffer.start();
     }
 
     @Override
     protected void onStop() {
-        sniffer.stop();
         rc2.stop();
         super.onStop();
     }
@@ -164,9 +160,8 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
             pageWindow = now;
             if (page == PAGE_RAW) {
                 rawPage.refresh(rc2);
-            } else if (page == PAGE_SNIFF) {
-                sniffer.tick();
-                sniffPage.refresh();
+            } else if (page == PAGE_USB) {
+                usbPage.refresh();
             }
         }
         Choreographer.getInstance().postFrameCallback(this);

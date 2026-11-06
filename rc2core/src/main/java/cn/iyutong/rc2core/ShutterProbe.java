@@ -50,7 +50,7 @@ public final class ShutterProbe {
     private volatile int fullCount;
     /** 有没有出现过「先全按、后补半按」——说明半按事件被谁吞了。 */
     private volatile boolean fullWithoutHalf;
-    /** 半按信号是否来自协议位（而非 Android 按键）。 */
+    /** 半按信号是否来自学习位（USB 字节流，而非 Android 按键）。 */
     private volatile boolean viaProtocol;
     private volatile String lastTransition = "—";
 
@@ -134,8 +134,9 @@ public final class ShutterProbe {
     /**
      * 从协议位喂一个半按状态。
      *
-     * <p>Android 层根本没有半按事件的机型（RC2 实测如此），只能靠
-     * {@link ProtocolSniffer} 学习出「哪一位跟着半按翻转」，再把它接到这里。
+     * <p>Android 层与协议层都没有半按事件的机型（RC2 实测如此），只能靠
+     * {@link cn.iyutong.rc2core.usb.UsbBitLab} 在 USB 原始字节流里学出
+     * 「哪一位跟着半按翻转」，再把它接到这里。
      *
      * @param down   该位是否为「按下」电平
      * @param source 来源描述，例如 {@code "协议 6/81 b3.5"}
@@ -192,7 +193,7 @@ public final class ShutterProbe {
         return true;
     }
 
-    /** 半按是不是从协议位来的（而不是 Android 按键）。 */
+    /** 半按是不是从学习位来的（USB 字节流，而不是 Android 按键）。 */
     public boolean viaProtocol() {
         return viaProtocol;
     }

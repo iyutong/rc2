@@ -381,3 +381,214 @@ protocol 服务 ──┬─ 通配订阅（{4,2,0,6,6,-1} 等 5 种形态轮试
   而且**无法区分「半按对焦」与「点屏幕对焦」**——如果只想要"对焦发生了"这个信号，够用。
 - **兜底**：如果三条都空，结论就固定了——半按在 MCU 固件里直达相机，Android 侧任何一层都观测不到，
   只能改用「全按 + 时间窗」伪半按，或把对焦挂到 C1/C2。
+
+---
+
+## 九、USB 方案：监听链路完全重写
+
+### 9.1 为什么推倒重来
+
+前八节的所有尝试都基于同一个假设：**数据在 Android 的应用层能拿到**。实测把这个假设打掉了——
+不管是无障碍按键过滤、`6/174` 按键报文，还是深扫整个 `cmdSet 6`，半按都不留痕迹。
+
+于是只剩一种可能：半按发生在**比应用层更靠下的地方**。而遥控器内部 Android 与 MCU 之间的
+物理通道，最可能就是 USB。所以本轮把整个监听链路换成从 USB 端点直接读原始字节流，
+不再是「向某个服务要数据」，而是「自己从总线上捡数据」。
+
+### 9.2 新通路
+
+```
+快门按下
+   ↓
+RC 的 MCU ──USB 端点──> UsbLink（bulk/interrupt 读线程）
+                              ↓ 原始字节流（可能半帧/粘包）
+                        DjiFrame.Splitter（0x55 魔数 + 长度 + CRC16）
+                              ↓ 一条条完整帧
+                 ┌────────────┴────────────┐
+            UsbDecoder                 UsbBitLab
+        （17B 按键帧 / 12B 摇杆帧）   （逐位上升沿统计）
+                 ↓                          ↓
+        摇杆 / 按键 / 挡位           ShutterProbe → 半按状态
+                 ↓                          ↓
+            Rc2Controller ──────────────► 仪表盘 / 任何宿主代码
+```
+
+关键差别：**这条链路上没有任何一处依赖 DJI 的私有 Binder 服务**。只要内核把端点暴露给应用，
+数据就能到手；拿不到，也在报告里写清楚拿不到的原因。
+
+### 9.3 新增的六个类
+
+| 文件 | 职责 |
+|---|---|
+| `usb/UsbTopology.java` | 只读普查：`UsbManager` 设备表、`/sys/bus/usb/devices`、`/dev/bus/usb`、`/dev/hidraw*`、`/proc/bus/input/devices` 的 `B: KEY=` 位图。最后给一句结论 |
+| `usb/UsbLink.java` | 申请授权 → `openDevice` → `claimInterface` → 每个 IN 端点一个读线程。区分「超时」和「故障」 |
+| `usb/DjiFrame.java` | 流式切帧：三种长度解释 × 两种边界，用 CRC16 挑对的那个；CRC 连续失败自动降级为只按长度切 |
+| `usb/UsbDecoder.java` | 帧尾倒推负载：17 字节当按键帧、12 字节当摇杆帧，并校验推出来的头长是否合理 |
+| `usb/UsbBitLab.java` | 位学习器：基线 3s → 按压 12s（按两次）→ 复核 9s（按一次），按帧长分桶统计 |
+| `UsbInput.java` | 把上面五个串起来，对 `Rc2Controller` 只暴露语义事件 |
+
+旧的 `DjiProtocol` / `RawProbe` / `ProtocolSniffer` / `SniffPage` 已移出构建，归档在
+`docs/legacy/protocol/`，附废弃原因。
+
+### 9.4 权限与前提（这是唯一会卡住的地方）
+
+| 项 | 内容 |
+|---|---|
+| **系统特性** | `android.hardware.usb.host`。manifest 里声明 `required=false`，没有也能装，只是通道打不开 |
+| **运行时授权** | `UsbManager.requestPermission(device, PendingIntent)`，系统弹一次框。已预授权的设备直接通过 |
+| **接口占用** | 必须 `claimInterface(itf, true)`。若厂商的 `protocol` 服务已独占该接口，这一步会失败——这是最可能的拦路虎 |
+| **免 root 边界** | 只能走 `UsbManager`。直接 `open()` `/dev/bus/usb/00X/00Y` 需要节点权限，普通应用拿不到 |
+
+不需要的权限：`USB_PERMISSION` 不是真权限，不用在 manifest 里声明；也不需要 root。
+
+### 9.5 半按怎么定位
+
+原始字节流没有字段说明，所以用**受控实验**代替猜测：
+
+1. **基线 3 秒**：不要碰快门。这期间翻过的位（心跳、计数器、电量）全部记入 `baselineRises`，后面一律排除；
+2. **按压 12 秒**：半按 → 保持 4 秒以上 → 松开 → 停 1 秒 → 再来一次。判据是**恰好 2 次上升沿**；
+3. **复核 9 秒**：再半按一次。只保留这 9 秒里**恰好 1 次上升沿**的位。
+
+三道筛子分别对应三种误判：常驻抖动、偶发变化、时间上的巧合。脉宽还要落在 150–9500ms，
+太短是毛刺，太长是别的状态位。
+
+锁定后把签名（`帧长:位序号`）存进 `SharedPreferences("rc2_usb"/"half_bit")`，
+下次启动直接恢复；此后每来一帧就读这一位，电平一变就喂 `ShutterProbe.feedHalf()`。
+
+### 9.6 五种结果与对策
+
+| 报告里的结论 | 含义 | 下一步 |
+|---|---|---|
+| 应用层可枚举到 USB 设备 | 最理想，端点可读 | 直接跑学习流程 |
+| 内核有设备、`UsbManager` 看不到 | 被内核驱动或厂商服务接管 | 换思路：只能靠 `adb shell` + `getevent`，应用内无解 |
+| 内核与应用层都没有 USB 设备 | 输入不走 USB | USB 方案在物理层不成立，回退到「全按 + 时间窗」或 C1/C2 |
+| 端点打开了但 5 秒无数据 | 端点通着但没内容 | 换端点重试；或在设备上做一次握手动作 |
+| 学习跑完一个位都没动 | 半按不进这条总线 | 到此为止 |
+
+### 9.7 使用步骤
+
+1. 装 APK，进「USB 实验室」；
+2. 首屏自动生成普查报告，**先看最后的「结论」三条**——它直接告诉你是哪一种情形；
+3. 若显示可枚举：点「重开通道」看端点是否 claim 成功；
+4. 「开始学习半按」→ 3 秒别动 → 半按两次（各 4 秒以上）→ 再按一次复核；
+5. 锁定后回仪表盘，「快门」徽标会跟着半按变薄荷色，日志出现 `IDLE → HALF（USB len17 b2.5）`。
+
+> 学习期间只是被动收数据，不发任何查询包，所以**不像旧方案那样会给链路加压**。
+> 但仍建议在地面做第一次。
+
+### 9.8 与旧方案对比
+
+| 维度 | protocol 方案（已废） | USB 方案（当前） |
+|---|---|---|
+| 数据来源 | 厂商 Binder 服务分发 | 自己读 USB 端点 |
+| 依赖 | DJI 私有接口、system UID 更好 | 仅 `android.hardware.usb` |
+| 半按 | 实测拿不到 | 有理论可能，靠位学习定位 |
+| 失败时的信息量 | 「没数据」 | 分层报告：无 Host / 无设备 / 接口被占 / 端点无数据 / 位不翻转 |
+| 抗固件升级 | 差（接口签名会变） | 好（物理层协议稳定） |
+| 成本 | 低（只读） | 中（要处理切帧、CRC、位学习） |
+
+---
+
+## 十、「授权未通过 / 30 秒无响应」怎么破
+
+### 10.1 先纠正一个误导：那条文案是硬编码的
+
+旧实现里失败文案写死了「USB 授权未通过（30 秒无响应或被拒绝）」，**但代码可能在 1 秒内就走到这里**。
+所以「30 秒无响应」并不代表真的等了 30 秒，它把三种完全不同的失败混成了一句话：
+
+| 真实情况 | 旧代码的表现 | 真实原因 |
+|---|---|---|
+| 广播根本没发 | 等满 30 秒，`granted=false` | 系统没有授权界面，`requestPermission` 内部起不来 Activity |
+| 广播发了但没带结果字段 | **立刻**返回 `granted=false` | `PendingIntent` 用了 `FLAG_IMMUTABLE`，系统无法回填 `EXTRA_PERMISSION_GRANTED` |
+| 系统明确拒绝 | 立刻或很快返回 | 设备已被其他进程独占，或策略禁止第三方打开 |
+
+第二种是**纯代码 bug**，而且症状和第三种一模一样。旧代码用的是：
+
+```java
+PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE   // ← 错在这
+```
+
+系统是这样回填结果的：`pi.send(ctx, 0, intent)`，其中 `intent` 里带着 `EXTRA_PERMISSION_GRANTED`。
+`FLAG_IMMUTABLE` 会让这次 fill-in 被丢弃，接收方读到的永远是默认值 `false`。
+**广播照样会到**，所以看起来像「授权被拒」，实际上用户可能压根没看到弹框，或者已经点了允许。
+
+### 10.2 本次改了什么
+
+| 改动 | 解决什么 |
+|---|---|
+| `PendingIntent` 改用可变（API 31+ 加 `FLAG_MUTABLE`，更低版本默认即可变） | 结果能真正回填，不再假失败 |
+| 授权结果接收器改为 **manifest 静态注册** + 动态注册双保险 | 静态那个走组件广播，不受 Android 13+ 动态注册 flag 限制，进程被杀也能拉起 |
+| 区分「广播没来」/「来了但缺字段」/「明确拒绝」三种结局 | 看到的不再是一句笼统的「30 秒无响应」 |
+| 等待时长 30s → 15s，并在等待前先回调一次状态 | 界面能显示当前卡在哪一步 |
+| 授权链：`hasPermission` → **`openDevice` 直接试探** → `requestPermission` → 超时后二次复核 | 系统静默放行、或授权延迟到达的情况都能兜住 |
+| 授权成功后 **重新枚举一次 `UsbDevice`** | 授权前拿到的对象可能没有接口描述，直接 `claimInterface` 必失败 |
+| 候选设备不再按「有没有 IN 端点」过滤 | 未授权时 `getInterfaceCount()` 返回 0，会把真实设备误判成「没有可读端点」而提前判死 |
+| 新增 `UsbPermission.diagnose()` 与「权限诊断」按钮 | 把 uid / SELinux / 每个设备的授权态 / `/dev/bus/usb` 节点权限一次摆出来 |
+| 新增 `device_filter.xml` + `USB_DEVICE_ATTACHED` 过滤 | 「默认打开」路线：勾选一次，永不再问 |
+| 报告区**长按即复制** | 设备上取日志不便，剪贴板是最短路径 |
+
+### 10.3 现在装上应该看到什么
+
+进「USB 实验室」，先看**权限诊断**最后那段「结论」，它会给出四种之一：
+
+1. **至少有一个设备能打开** → 授权这关过了，问题在后面（接口被占 / 端点无数据）；
+2. **全部未授权 + 系统不弹框** → 授权界面缺失，走 10.4 的路线；
+3. **有授权记录但打不开** → 句柄被厂商 `protocol` 服务持有，授权再成功也白搭；
+4. **一个设备都看不到** → 分两种：若有 accessory 列表，说明 USB 口只做从机，物理层不成立；
+   若连 accessory 都没有，说明 MCU 通道压根不走 USB。
+
+### 10.4 四条出路，按可行性排序
+
+**路线 A：拔插一次，让它成为「默认应用」（推荐先试）**
+
+本版已在 `MainActivity` 注册了 `USB_DEVICE_ATTACHED` 过滤。把 USB 设备拔掉再插上（或让遥控器重新枚举该设备），
+系统会问「用哪个应用打开此 USB 设备」——勾选「默认使用本应用」。
+
+这条走的是 PackageManager 的默认应用机制，**不经过 `UsbPermissionActivity`**，
+所以在授权对话框被裁掉的固件上照样能用。之后 `hasPermission()` 直接为 true。
+
+**路线 B：装成 priv-app，拿 `MANAGE_USB`**
+
+`MANAGE_USB` 是 `signature|privileged` 权限，装进 `/system/priv-app` 并加白名单即可获得，
+拿到之后 `hasPermission()` 恒为 true，不需要任何对话框。需要 root + `/system` 可写。
+
+```bash
+bash docs/tools/install-as-system.sh
+```
+
+脚本会做完卸载 → remount → push → 写 `privapp-permissions-rc2.xml` → 重启 → 验证。
+如果 `adb remount` 报只读，先 `adb disable-verity && adb reboot`。
+
+**路线 C：用 adb 看系统到底为什么拒**
+
+```bash
+adb logcat -c && adb logcat -s UsbService UsbHostManager UsbUserPermissionManager
+```
+
+然后点一次「重开通道」，看有没有这几类行：
+
+- `Unable to start UsbPermissionActivity` / `ActivityNotFoundException`
+  → 授权界面不存在，**确认走路线 A 或 B**；
+- `Ignoring requestPermission for ... from ...`
+  → 系统策略层直接吞掉，路线 B 才行；
+- `granted=true` 但应用仍读到 false
+  → PendingIntent 可变性问题（本版已修）。
+
+**路线 D：确认设备到底在不在**
+
+```bash
+adb shell ls -l /dev/bus/usb/*/          # 有没有节点、权限位是什么
+adb shell cat /sys/bus/usb/devices/*/idVendor
+adb shell getevent -lt                   # 半按有没有进内核（终局判据）
+```
+
+如果 `/dev/bus/usb` 里根本没有对应节点，或 `getevent` 里压快门什么也不出，
+那么结论就固定了：半按在 MCU 固件内部直达相机，**Android 侧任何一层都观测不到**。
+此时不该继续在 USB 上加投入，应转「全按 + 150ms 时间窗」伪半按，或把对焦挂到 C1/C2。
+
+### 10.5 一句话总结当前状态
+
+授权这条已经修掉了两个确定的 bug（不可变 PendingIntent、授权后未重新枚举设备），
+并补了「默认打开」和「priv-app」两条绕过路径。
+但**如果系统里根本没有可枚举的 USB 设备，以上全部无效**——
+所以先看诊断结论的第 4 种情形，那是决定要不要继续投入的分水岭。
