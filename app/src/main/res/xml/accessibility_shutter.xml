@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    只申请「按键过滤」，不订阅 UI 事件，减少对系统的干扰。
+    canRequestFilterKeyEvents 必须在 XML 里声明，运行时才能拿 FLAG_REQUEST_FILTER_KEY_EVENTS。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagDefault"
+    android:canRequestFilterKeyEvents="true"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/a11y_desc"
+    android:notificationTimeout="0"
+    android:settingsActivity="local.rc2.xbox.MainActivity" />

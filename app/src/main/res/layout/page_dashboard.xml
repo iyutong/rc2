@@ -40,6 +40,18 @@
             android:layout_height="wrap_content"
             android:text="● 等待 MCU" />
 
+        <!-- 快门半按状态：点一下跳到无障碍设置开启按键过滤 -->
+        <TextView
+            android:id="@+id/shutterText"
+            style="@style/RcBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:text="快门 —"
+            android:textColor="@color/rc_muted" />
+
         <TextView
             android:id="@+id/rateText"
             style="@style/RcTag"
@@ -456,6 +468,14 @@
                 android:fontFamily="monospace"
                 android:text="RX — RY — LY — LX — LT — RT —"
                 android:textSize="19sp" />
+
+            <TextView
+                android:id="@+id/btnHunt"
+                style="@style/RcLink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="半按嗅探 ›" />
 
             <TextView
                 android:id="@+id/btnRaw"

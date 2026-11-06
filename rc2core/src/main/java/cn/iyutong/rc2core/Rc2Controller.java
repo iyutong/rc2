@@ -318,10 +318,24 @@ public final class Rc2Controller {
                 keyHeld.remove(sample.shortLabel());
             }
         }
+        // 半按/全按状态机：状态真的跃迁了才记日志与回调，避免重复刷屏。
+        boolean moved = ShutterProbe.GLOBAL.feed(e, "window");
         for (Rc2Listener l : listeners) {
             final KeySample k = sample;
             emit(() -> l.onKey(k));
         }
+        if (moved) {
+            final ShutterProbe.Stage stage = ShutterProbe.GLOBAL.stage();
+            log('I', "Shutter", ShutterProbe.GLOBAL.lastTransition());
+            for (Rc2Listener l : listeners) {
+                emit(() -> l.onShutterStage(stage, sample));
+            }
+        }
+    }
+
+    /** 快门键半按探针（全进程共享，无障碍服务与界面看到的是同一份状态）。 */
+    public ShutterProbe shutter() {
+        return ShutterProbe.GLOBAL;
     }
 
     /** 取一份冻结快照。界面每帧刷新请改用上面的 getter，避免分配。 */
@@ -432,6 +446,10 @@ public final class Rc2Controller {
 
     private void emitButton(RcButton b, boolean pressed) {
         log('I', "MCU", "按键 " + b.label() + (pressed ? " 按下" : " 松开"));
+        // 全按从 MCU 位图来，半按从协议学习位来，两者汇到同一个状态机
+        if (b == RcButton.SHUTTER && ShutterProbe.GLOBAL.feedFull(pressed, "MCU 6/174")) {
+            log('I', "Shutter", ShutterProbe.GLOBAL.lastTransition());
+        }
         for (Rc2Listener l : listeners) {
             emit(() -> l.onButton(b, pressed));
         }

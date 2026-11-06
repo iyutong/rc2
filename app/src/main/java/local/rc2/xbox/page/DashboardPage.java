@@ -11,6 +11,7 @@ import java.util.Locale;
 import cn.iyutong.rc2core.FlightMode;
 import cn.iyutong.rc2core.Rc2Controller;
 import cn.iyutong.rc2core.RcButton;
+import cn.iyutong.rc2core.ShutterProbe;
 import cn.iyutong.rc2core.Sticks;
 import local.rc2.xbox.R;
 import local.rc2.xbox.ui.DialView;
@@ -29,6 +30,7 @@ public final class DashboardPage {
     private static final int LOG_LINES = 150;
 
     private final TextView stateText;
+    private final TextView shutterText;
     private final TextView rateText;
     private final TextView statusText;
     private final TextView keyC1;
@@ -69,9 +71,12 @@ public final class DashboardPage {
     private String lastDialR = "";
     private String lastChannel = "";
     private String lastModeRaw = "";
+    private String lastShutter = "";
+    private int lastShutterColor = 0;
 
     public DashboardPage(View root) {
         stateText = root.findViewById(R.id.stateText);
+        shutterText = root.findViewById(R.id.shutterText);
         rateText = root.findViewById(R.id.rateText);
         statusText = root.findViewById(R.id.statusText);
         keyC1 = root.findViewById(R.id.keyC1);
@@ -123,6 +128,7 @@ public final class DashboardPage {
         tickRate(rc2, now);
         stateText.setText(rc2.isLive() ? "● 本机实时输入" : "● 等待 MCU");
         stateText.setTextColor(rc2.isLive() ? 0xff88ffe2 : 0xffffc46e);
+        tickShutter(rc2);
 
         String status = rc2.status();
         if (!status.equals(statusText.getText().toString())) {
@@ -260,5 +266,34 @@ public final class DashboardPage {
     private static String dialText(Sticks s, int channel) {
         int byteVal = s.byteValue(channel);
         return String.format(Locale.US, "0x%02X (%d)  MCU %d", byteVal, byteVal, s.raw(channel));
+    }
+
+    /** 快门探针：只认 Android 层的 FOCUS / CAMERA 两个键码。 */
+    private void tickShutter(Rc2Controller rc2) {
+        ShutterProbe probe = rc2.shutter();
+        String text;
+        int color;
+        switch (probe.stage()) {
+            case HALF:
+                text = "快门 半按";
+                color = 0xff88ffe2;
+                break;
+            case FULL:
+                text = "快门 全按";
+                color = 0xffffc46e;
+                break;
+            default:
+                text = "快门 —";
+                color = 0xffb6c8e6;
+        }
+        String last = lastShutter;
+        if (!text.equals(last)) {
+            lastShutter = text;
+            shutterText.setText(text);
+        }
+        if (color != lastShutterColor) {
+            lastShutterColor = color;
+            shutterText.setTextColor(color);
+        }
     }
 }

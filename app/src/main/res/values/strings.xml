@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">RC2 全局手柄</string>
+    <string name="a11y_desc">仅用于读取快门键半按（KEYCODE_FOCUS）与全按（KEYCODE_CAMERA）的状态，不读取屏幕内容，也不拦截按键。</string>
 </resources>

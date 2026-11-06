@@ -50,6 +50,18 @@ public interface Rc2Listener {
     default void onKey(KeySample key) {
     }
 
+    /**
+     * 快门键三段状态发生变化（空闲 → 半按 → 全按 → 空闲）。
+     *
+     * <p>半按只看 {@code KEYCODE_FOCUS}。若遥控器把半按吞在 MCU 固件里，
+     * 这里永远不会出现 {@link ShutterProbe.Stage#HALF}，只会从空闲直接跳到全按，
+     * 可以用 {@link ShutterProbe#fullWithoutHalf()} 判定这种情形。
+     *
+     * <p><b>只在变化时</b>回调，和 {@link #onButton} 一样。
+     */
+    default void onShutterStage(ShutterProbe.Stage stage, KeySample key) {
+    }
+
     /** 出错，多数情况下 Controller 会继续重试。 */
     default void onError(String message) {
     }

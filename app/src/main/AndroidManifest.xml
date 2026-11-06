@@ -17,6 +17,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            快门半按探针：带按键过滤的无障碍服务。
+            系统会把全部按键复制一份给 onKeyEvent，这是免 root 在前台之外拿 KEYCODE_FOCUS 的唯一途径。
+            需要在「设置 → 无障碍」里手动开启一次。
+        -->
+        <service
+            android:name="local.rc2.xbox.ShutterKeyService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_shutter" />
+        </service>
     </application>
 
 </manifest>
