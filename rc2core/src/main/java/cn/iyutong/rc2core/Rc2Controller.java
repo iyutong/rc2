@@ -62,6 +62,8 @@ public final class Rc2Controller {
     private volatile long packets;
     private volatile FlightMode mode = FlightMode.UNKNOWN;
     private volatile int modeByte = -1;
+    /** 挡位码（b2 低 2 位）。判定变更只认它，不认原始字节，见 handleMode。 */
+    private volatile int modeCode = -1;
     private volatile String modeSource = "—";
     private volatile int pressedMask;
     private volatile byte[] rawButtons = new byte[0];
@@ -199,9 +201,14 @@ public final class Rc2Controller {
         return mode;
     }
 
-    /** 挡位报文 b2 原始值，未收到为 -1。 */
+    /** 挡位报文 b2 原始值，未收到为 -1。注意 bit2-3 是 C1/C2，会随按键变化。 */
     public int flightModeByte() {
         return modeByte;
+    }
+
+    /** 挡位码（b2 低 2 位）：0→S，1→N，2→C，3→未知；未收到为 -1。 */
+    public int flightModeCode() {
+        return modeCode;
     }
 
     /** 挡位来源，例如 "6/174 t2"。 */
@@ -209,7 +216,7 @@ public final class Rc2Controller {
         return modeSource;
     }
 
-    /** 观察到的 b2 取值与出现次数，用于核对挡位编码。 */
+    /** 观察到的挡位码与出现次数，形如 "0×12 1×3"，用于核对挡位编码。 */
     public String modeSightings() {
         synchronized (lock) {
             if (modeSightings.isEmpty()) {
@@ -220,7 +227,7 @@ public final class Rc2Controller {
                 if (sb.length() > 0) {
                     sb.append("  ");
                 }
-                sb.append(String.format(Locale.US, "%02X×%d", e.getKey(), e.getValue()));
+                sb.append(e.getKey()).append('×').append(e.getValue());
             }
             return sb.toString();
         }
@@ -328,7 +335,7 @@ public final class Rc2Controller {
     /** 取一份冻结快照。界面每帧刷新请改用上面的 getter，避免分配。 */
     public Rc2State snapshot() {
         synchronized (lock) {
-            return new Rc2State(connected, status, sticks, mode, modeByte, modeSource,
+            return new Rc2State(connected, status, sticks, mode, modeByte, modeCode, modeSource,
                     pressedMask, heldLabels(), packets, samples, rawButtons, lastDiff,
                     SystemClock.uptimeMillis());
         }
@@ -448,29 +455,40 @@ public final class Rc2Controller {
         }
     }
 
-    /** 挡位报文 → FlightMode 变化事件。 */
+    /**
+     * 挡位报文 → FlightMode 变化事件。
+     *
+     * <p>判定「变没变」只看 b2 的低 2 位（{@link FlightMode#code(int)}），不看原始字节：
+     * b2 的 bit2-3 是 C1/C2 按键位，按这两个键会让 b2 从 0x00 变 0x04/0x08，
+     * 挡位其实没动。之前按原始字节比较，于是每按一次 C1/C2 就刷一条「S → S」的假日志。
+     */
     private void handleMode(int cmdSet, int cmdId, int type, byte[] payload) {
         int b2 = payload[2] & 0xff;
+        int code = FlightMode.code(b2);
         synchronized (lock) {
-            Integer seen = modeSightings.get(b2);
-            modeSightings.put(b2, seen == null ? 1 : seen + 1);
+            Integer seen = modeSightings.get(code);
+            modeSightings.put(code, seen == null ? 1 : seen + 1);
             while (modeSightings.size() > 8) {
                 Integer oldest = modeSightings.keySet().iterator().next();
                 modeSightings.remove(oldest);
             }
         }
-        if (b2 == modeByte) {
+        if (code == modeCode) {
+            // 挡位没变，但 b2 可能因 C1/C2 变了，静默更新原始值供诊断。
+            modeByte = b2;
             return;
         }
         FlightMode prev = mode;
-        FlightMode next = FlightMode.fromByte(b2);
+        FlightMode next = FlightMode.fromCode(code);
         modeByte = b2;
+        modeCode = code;
         mode = next;
         modeSource = cmdSet + "/" + cmdId + " t" + type;
         log('I', "Mode", "飞行模式 " + prev.label() + " → " + next.label()
-                + String.format(Locale.US, "（b2=0x%02X）", b2));
+                + String.format(Locale.US, "（码 %d · b2=0x%02X）", code, b2));
         for (Rc2Listener l : listeners) {
-            emit(() -> l.onFlightMode(next, b2));
+            final int raw = b2;
+            emit(() -> l.onFlightMode(next, raw));
         }
     }
 

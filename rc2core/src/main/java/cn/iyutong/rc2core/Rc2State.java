@@ -15,8 +15,10 @@ public final class Rc2State {
     public final String status;
     public final Sticks sticks;
     public final FlightMode flightMode;
-    /** 挡位报文的 b2 原始值，未收到为 -1。 */
+    /** 挡位报文的 b2 原始值，未收到为 -1。bit2-3 是 C1/C2，会随按键变化。 */
     public final int flightModeByte;
+    /** 挡位码（b2 低 2 位），0→S 1→N 2→C，未收到为 -1。 */
+    public final int flightModeCode;
     /** 挡位来源，例如 "6/174 t2"。 */
     public final String flightModeSource;
     /** MCU 按键位掩码。 */
@@ -35,13 +37,15 @@ public final class Rc2State {
     public final long at;
 
     Rc2State(boolean connected, String status, Sticks sticks, FlightMode flightMode,
-             int flightModeByte, String flightModeSource, int pressedMask, Set<String> held,
+             int flightModeByte, int flightModeCode, String flightModeSource,
+             int pressedMask, Set<String> held,
              long packets, long samples, byte[] rawButtons, String lastDiff, long at) {
         this.connected = connected;
         this.status = status;
         this.sticks = sticks;
         this.flightMode = flightMode;
         this.flightModeByte = flightModeByte;
+        this.flightModeCode = flightModeCode;
         this.flightModeSource = flightModeSource;
         this.pressedMask = pressedMask;
         this.heldLabels = Collections.unmodifiableSet(new LinkedHashSet<>(held));

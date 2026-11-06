@@ -36,7 +36,13 @@ public interface Rc2Listener {
     default void onButton(RcButton button, boolean pressed) {
     }
 
-    /** 挡位变化。{@code rawByte} 是报文 b2 的原始值，便于校验编码。 */
+    /**
+     * 挡位变化。<b>只在挡位码真正变化时</b>回调。
+     *
+     * <p>{@code rawByte} 是报文 b2 的原始值，便于校验编码；注意它的 bit2-3 是 C1/C2 按键位，
+     * 所以同一个挡位下这个值也可能不同 —— 判断挡位请用 {@code mode} 或
+     * {@link FlightMode#code(int)}，不要直接比 rawByte。
+     */
     default void onFlightMode(FlightMode mode, int rawByte) {
     }
 

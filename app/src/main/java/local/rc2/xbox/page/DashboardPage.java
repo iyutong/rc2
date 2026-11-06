@@ -206,9 +206,9 @@ public final class DashboardPage {
             modeS.setSelected(mode == FlightMode.S);
         }
         String text = rc2.flightModeByte() < 0
-                ? "b2 —"
-                : String.format(Locale.US, "b2 %02X · %s",
-                        rc2.flightModeByte(), rc2.modeSightings());
+                ? "码 —"
+                : String.format(Locale.US, "码 %d · b2 %02X · %s",
+                        rc2.flightModeCode(), rc2.flightModeByte(), rc2.modeSightings());
         if (!text.equals(lastModeRaw)) {
             lastModeRaw = text;
             modeRaw.setText(text);
