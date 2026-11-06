@@ -91,41 +91,16 @@ public final class InputMonitor {
     private static final LinkedHashMap<String, Sig> sigMap = new LinkedHashMap<>();
     private static final ArrayList<Push> ring = new ArrayList<>();
 
-    /** 一类"全量扫描"通道：cmdSet/cmdId/类型/长度相同即归为一类。 */
-    public static final class ScanSig {
-        public final int cmdSet;
-        public final int cmdId;
-        public final int type;
-        public final int len;
-        public int count;
-        public int changed;
-        public String hex = "";
-        public long lastAt;
-        byte[] lastBytes;
-        long hexAt;
-
-        ScanSig(int cmdSet, int cmdId, int type, int len) {
-            this.cmdSet = cmdSet;
-            this.cmdId = cmdId;
-            this.type = type;
-            this.len = len;
-        }
-
-        public String cmd() {
-            return cmdSet + "/" + cmdId;
-        }
-    }
-
-    /** 全量订阅开关：只在"全量报送"页打开时置 true，离开即关，避免常态开销。 */
-    public static volatile boolean scanOn;
-    /** 全量订阅的真实状态，由读取层回写，避免 service 不可用时误报"监听中"。 */
-    public static volatile String scanState = "未开启";
-    /** 全量扫描累计收到的包数（含所有 cmdSet / cmdId / 类型）。 */
-    public static volatile long scanTotal;
-    public static volatile long scanRevision;
-    public static volatile long scanStartAt;
-    private static final int SCAN_SIGS = 256;
-    private static final LinkedHashMap<String, ScanSig> scanMap = new LinkedHashMap<>();
+    /** cmd 枚举扫描：服务不支持 -1 通配，改为逐个精确 cmdId 试探订阅。 */
+    public static final int PROBE_CMD_SET = 6;
+    public static final int PROBE_FROM = 0;
+    public static final int PROBE_TO = 4095;
+    public static volatile boolean cmdProbeRunning;
+    public static volatile int cmdCursor;
+    public static volatile String cmdState = "未开始";
+    public static volatile long cmdRevision;
+    public static volatile long cmdElapsed;
+    private static final ArrayList<Integer> cmdHits = new ArrayList<>();
 
     /** 飞行模式报文长度：C/N/S 挡位在 17 字节报文的 b2 中上报。 */
     public static final int MODE_LEN = 17;
@@ -183,8 +158,10 @@ public final class InputMonitor {
 
     public static synchronized void stop() {
         running = false;
-        scanOn = false;
-        scanState = "未连接";
+        if (cmdProbeRunning) {
+            cmdProbeRunning = false;
+            cmdState = "已中止";
+        }
         if (reader != null) {
             reader.stop();
             reader = null;
@@ -256,84 +233,56 @@ public final class InputMonitor {
         return new ArrayList<>(ring);
     }
 
-    /**
-     * 全量订阅的轻量统计入口。与 {@link #probe} 分开：这里不做全量 hex 转换、
-     * 不进环形缓冲，只累加计数并在内容变化时刷新样本，避免高频遥测把 UI 拖垮。
-     */
-    static synchronized void scan(int[] hdr, byte[] raw) {
-        if (!scanOn || raw == null) {
+    /** 清空上一轮 cmd 枚举结果。 */
+    public static synchronized void cmdProbeReset() {
+        cmdHits.clear();
+        cmdCursor = PROBE_FROM - 1;
+        cmdElapsed = 0;
+        cmdState = "未开始";
+        cmdRevision++;
+    }
+
+    /** 记录一个订阅被服务端接受的 cmdId。 */
+    static synchronized void cmdHit(int cmdId) {
+        if (!cmdHits.contains(cmdId)) {
+            cmdHits.add(cmdId);
+        }
+        cmdRevision++;
+    }
+
+    public static synchronized List<Integer> cmdHits() {
+        return new ArrayList<>(cmdHits);
+    }
+
+    /** 开始枚举 cmdSet=6 下的 cmdId 区间，服务不可用时不启动。 */
+    public static void startCmdProbe() {
+        if (cmdProbeRunning) {
             return;
         }
-        int cmdSet = hdr.length > 13 ? hdr[13] : -1;
-        int cmdId = hdr.length > 14 ? hdr[14] : -1;
-        int type = hdr.length > 5 ? hdr[5] : -1;
-        String key = cmdSet + "/" + cmdId + "/" + type + "/" + raw.length;
-        ScanSig s = scanMap.get(key);
-        if (s == null) {
-            if (scanMap.size() >= SCAN_SIGS) {
-                return;
-            }
-            s = new ScanSig(cmdSet, cmdId, type, raw.length);
-            scanMap.put(key, s);
-            s.lastBytes = raw;
-            s.hex = hex(raw, 24);
-            s.hexAt = SystemClock.uptimeMillis();
-            UiLog.i("Scan", "新通道 " + s.cmd() + " t" + type + " · " + raw.length + "B · " + s.hex);
-        } else if (!Arrays.equals(s.lastBytes, raw)) {
-            // createByteArray 每次返回新数组，可直接持有引用，无需复制。
-            s.lastBytes = raw;
-            s.changed++;
-            long now = SystemClock.uptimeMillis();
-            if (now - s.hexAt >= 150) {
-                s.hex = hex(raw, 24);
-                s.hexAt = now;
-            }
-        }
-        s.count++;
-        s.lastAt = SystemClock.uptimeMillis();
-        scanTotal++;
-        scanRevision++;
-    }
-
-    /** 全量通道快照，按收到次数从多到少排序。 */
-    public static synchronized List<ScanSig> scanSignatures() {
-        ArrayList<ScanSig> out = new ArrayList<>(scanMap.values());
-        out.sort((a, b) -> Integer.compare(b.count, a.count));
-        return out;
-    }
-
-    public static synchronized int scanKinds() {
-        return scanMap.size();
-    }
-
-    /** 打开全量订阅。统计数据跨多次查看累计，不做清空。 */
-    public static void startScan() {
-        if (scanOn) {
+        if (reader == null) {
+            cmdState = "MCU 未连接";
+            cmdRevision++;
             return;
         }
-        if (scanStartAt == 0) {
-            scanStartAt = SystemClock.uptimeMillis();
+        cmdProbeReset();
+        cmdProbeRunning = true;
+        cmdState = "扫描中";
+        cmdRevision++;
+        reader.startCmdProbe(PROBE_CMD_SET, PROBE_FROM, PROBE_TO);
+        UiLog.i("Cmd", "开始枚举 " + PROBE_CMD_SET + "/" + PROBE_FROM + "–" + PROBE_TO);
+    }
+
+    public static void stopCmdProbe() {
+        if (!cmdProbeRunning) {
+            return;
         }
-        scanOn = true;
+        cmdProbeRunning = false;
         if (reader != null) {
-            reader.setFullScan(true);
-        } else {
-            scanState = "MCU 未连接";
+            reader.stopCmdProbe();
         }
-        UiLog.i("Scan", "全量订阅已开启");
-    }
-
-    /** 关闭全量订阅，已采集的数据保留供查看。 */
-    public static void stopScan() {
-        if (!scanOn) {
-            return;
-        }
-        scanOn = false;
-        if (reader != null) {
-            reader.setFullScan(false);
-        }
-        scanState = "已暂停";
-        UiLog.i("Scan", "全量订阅已关闭");
+        cmdState = "已中止";
+        cmdRevision++;
+        UiLog.w("Cmd", "枚举已中止，已扫到 " + cmdCursor);
     }
 
     /**

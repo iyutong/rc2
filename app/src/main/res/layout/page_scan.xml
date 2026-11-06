@@ -21,7 +21,7 @@
             style="@style/RcTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="全量报送" />
+            android:text="cmd 枚举" />
 
         <TextView
             android:id="@+id/scanSummary"
@@ -37,7 +37,7 @@
             style="@style/RcLink"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="暂停" />
+            android:text="开始扫描" />
 
         <TextView
             android:id="@+id/btnBackToProbe"
@@ -76,7 +76,7 @@
             style="@style/RcSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="按接收量排序 · cmd / 类型 / 字节 / 次数 / 变化 / 最近样本" />
+            android:text="订阅被服务端接受的 cmdId · cmdSet 固定 6" />
 
         <ScrollView
             android:id="@+id/scanScroll"
@@ -101,7 +101,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:includeFontPadding="false"
-        android:text="本页打开时自动订阅全部 cmdSet / cmdId，离开即退订。若长期显示 0 包，说明服务端不支持 -1 通配。"
+        android:text="服务不支持 -1 通配，只能逐个精确订阅试探。点击「开始扫描」后遍历 cmdSet=6 的 cmdId 0–4095，约十余秒；命中表示该 cmd 被服务端接受。"
         android:textColor="@color/rc_muted"
         android:textSize="19sp" />
 

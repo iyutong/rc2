@@ -60,7 +60,7 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private TextView probeSigs;
     private TextView probeRing;
     private ScrollView probeScroll;
-    private TextView scanSummary;
+    private TextView cmdSummary;
     private TextView scanText;
     private ScrollView scanScroll;
     private TextView btnScanToggle;
@@ -82,10 +82,7 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private long rawRevision = -1;
     private long probeSeen = -1;
     private long modeSeen = -1;
-    private long scanSeen = -1;
-    private long scanRateWindow;
-    private long priorScanTotal;
-    private int scanRate;
+    private long cmdSeen = -1;
     private String lastStickL = "";
     private String lastStickR = "";
     private String lastDialL = "";
@@ -115,13 +112,13 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         findViewById(R.id.btnBackToProbe).setOnClickListener(v -> show(PAGE_PROBE));
         findViewById(R.id.btnBackFromScan).setOnClickListener(v -> show(PAGE_DASH));
         findViewById(R.id.btnScanToggle).setOnClickListener(v -> {
-            if (InputMonitor.scanOn) {
-                InputMonitor.stopScan();
+            if (InputMonitor.cmdProbeRunning) {
+                InputMonitor.stopCmdProbe();
             } else {
-                InputMonitor.startScan();
+                InputMonitor.startCmdProbe();
             }
-            scanSeen = -1;
-            refreshScan();
+            cmdSeen = -1;
+            refreshCmd();
         });
     }
 
@@ -156,12 +153,11 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         probeSigs = findViewById(R.id.probeSigs);
         probeRing = findViewById(R.id.probeRing);
         probeScroll = findViewById(R.id.probeScroll);
-        scanSummary = findViewById(R.id.scanSummary);
+        cmdSummary = findViewById(R.id.scanSummary);
         scanText = findViewById(R.id.scanText);
         scanScroll = findViewById(R.id.scanScroll);
         btnScanToggle = findViewById(R.id.btnScanToggle);
     }
-
     private void applyFullscreen() {
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -175,12 +171,8 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private void show(int page) {
         pager.setDisplayedChild(page);
         if (page == PAGE_SCAN) {
-            InputMonitor.startScan();
-            scanSeen = -1;
-            refreshScan();
-        } else {
-            // 全量订阅开销大，只在查看页面时保持；离开即退订。
-            InputMonitor.stopScan();
+            cmdSeen = -1;
+            refreshCmd();
         }
         if (page == PAGE_RAW) {
             rawRevision = -1;
@@ -210,11 +202,7 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     protected void onStart() {
         super.onStart();
         InputMonitor.start();
-        // 从后台回来时若正停在全量页，需要重新下发全量订阅。
-        if (pager.getDisplayedChild() == PAGE_SCAN) {
-            InputMonitor.startScan();
-            scanSeen = -1;
-        }
+        cmdSeen = -1;
     }
 
     @Override
@@ -275,7 +263,7 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
             } else if (page == PAGE_PROBE) {
                 refreshProbe();
             } else if (page == PAGE_SCAN) {
-                refreshScan();
+                refreshCmd();
             }
         }
         Choreographer.getInstance().postFrameCallback(this);
@@ -550,60 +538,47 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     }
 
     /**
-     * 全量报送页：列出所有到达本进程的推送通道，按接收量排序。
-     * 速率每秒结算一次；通道数或数据没变时直接返回，避免每帧重建文本。
+     * cmd 枚举页：逐个试探 cmdSet=6 下的 cmdId，显示进度与命中的 cmd。
+     * 仅在 revision 变化时重绘，避免每帧重建网格文本。
      */
-    private void refreshScan() {
-        long now = SystemClock.uptimeMillis();
-        long rev = InputMonitor.scanRevision;
-        boolean rateDue = now - scanRateWindow >= 1000;
-        if (!rateDue && rev == scanSeen) {
+    private void refreshCmd() {
+        long rev = InputMonitor.cmdRevision;
+        if (rev == cmdSeen) {
             return;
         }
-        if (rateDue) {
-            scanRate = (int) ((InputMonitor.scanTotal - priorScanTotal) * 1000L
-                    / Math.max(1L, now - scanRateWindow));
-            priorScanTotal = InputMonitor.scanTotal;
-            scanRateWindow = now;
-        }
-        scanSeen = rev;
+        cmdSeen = rev;
 
-        List<InputMonitor.ScanSig> sigs = InputMonitor.scanSignatures();
-        scanSummary.setText(String.format(Locale.US, "%s · 总包 %d · %d 类 · %d 包/秒",
-                InputMonitor.scanState, InputMonitor.scanTotal, sigs.size(), scanRate));
-        btnScanToggle.setText(InputMonitor.scanOn ? "暂停" : "继续");
+        List<Integer> hits = InputMonitor.cmdHits();
+        int total = InputMonitor.PROBE_TO - InputMonitor.PROBE_FROM + 1;
+        int done = Math.max(0, Math.min(total,
+                InputMonitor.cmdCursor - InputMonitor.PROBE_FROM + 1));
 
-        if (sigs.isEmpty()) {
-            String hint;
-            if (!InputMonitor.scanOn) {
-                hint = "未开启全量订阅";
-            } else if ("监听中".equals(InputMonitor.scanState)) {
-                hint = "已订阅全部 cmdSet / cmdId，等待推送…";
-            } else {
-                hint = InputMonitor.scanState + "，订阅未生效";
-            }
-            scanText.setText(hint);
+        cmdSummary.setText(String.format(Locale.US, "%s · %d/%d · 命中 %d · %d ms",
+                InputMonitor.cmdState, done, total, hits.size(), InputMonitor.cmdElapsed));
+        btnScanToggle.setText(InputMonitor.cmdProbeRunning ? "停止" : "开始扫描");
+
+        if (hits.isEmpty()) {
+            scanText.setText(InputMonitor.cmdProbeRunning
+                    ? "正在逐个试探 cmdSet=6 的 cmdId，请稍候…"
+                    : "尚未命中。点右上「开始扫描」枚举 cmdSet=6 / cmdId 0–4095。");
             return;
         }
 
         SpannableStringBuilder sb = new SpannableStringBuilder();
-        int limit = Math.min(sigs.size(), 90);
-        for (int i = 0; i < limit; i++) {
-            InputMonitor.ScanSig s = sigs.get(i);
-            boolean active = now - s.lastAt < 2000;
-            String head = String.format(Locale.US, "%-9s t%-3d %3dB  x%-6d c%-5d\n",
-                    s.cmd(), s.type, s.len, s.count, s.changed);
+        for (int i = 0; i < hits.size(); i++) {
             int start = sb.length();
-            sb.append(head);
-            sb.setSpan(new ForegroundColorSpan(active ? 0xffeff5ff : 0xff8fa6c8),
-                    start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            int hexStart = sb.length();
-            sb.append("         ").append(s.hex.isEmpty() ? "—" : s.hex).append('\n');
-            sb.setSpan(new ForegroundColorSpan(active ? 0xffb6c8e6 : 0xff7d90ad),
-                    hexStart, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.append(String.format(Locale.US, "%-11s", InputMonitor.PROBE_CMD_SET + "/" + hits.get(i)));
+            sb.setSpan(new ForegroundColorSpan(0xff88ffe2), start, sb.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if ((i + 1) % 6 == 0) {
+                sb.append('\n');
+            }
         }
-        if (sigs.size() > limit) {
-            sb.append("… 另有 ").append(String.valueOf(sigs.size() - limit)).append(" 类未显示\n");
+        if (hits.size() % 6 != 0) {
+            sb.append('\n');
+        }
+        if (hits.size() >= total) {
+            sb.append("\n全部 cmdId 都被接受，说明服务端不校验 cmd 是否存在，\n此路无法区分真实通道。");
         }
         scanText.setText(sb);
     }
