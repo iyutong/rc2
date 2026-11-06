@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    「默认打开」路线的设备过滤表。
+
+    用户重新插拔设备后，系统会问「用哪个应用打开此 USB 设备」；
+    勾选「默认使用」后 PackageManager 会记住这个偏好，之后该设备的
+    hasPermission() 直接为 true，永远不再弹授权框 —— 这条能绕过
+    定制固件里被裁掉的授权界面。
+
+    0x2CA3 = 11427，DJI 的 USB Vendor ID。
+    这里刻意只按 VID 匹配：RC2 内部 MCU 的具体 PID 未知，
+    而多列一个不存在的 PID 会让过滤表整体失效。
+-->
+<resources>
+    <usb-device vendor-id="11427" />
+</resources>

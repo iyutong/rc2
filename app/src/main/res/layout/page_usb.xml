@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB 实验室：1920×1080 设计画布 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_screen"
+    android:orientation="vertical"
+    android:paddingStart="36dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="36dp"
+    android:paddingBottom="20dp">
+
+    <!-- ═══ 顶栏 ═══ -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:baselineAligned="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            style="@style/RcTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="USB 实验室" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/usbState"
+            style="@style/RcBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● 未启动" />
+
+        <TextView
+            android:id="@+id/btnUsbStart"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="重开通道" />
+
+        <TextView
+            android:id="@+id/btnUsbScan"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="重扫拓扑" />
+
+        <TextView
+            android:id="@+id/btnUsbPerm"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="权限诊断" />
+
+        <TextView
+            android:id="@+id/btnBackFromUsb"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="返回仪表盘" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="10dp"
+        android:background="@color/rc_line" />
+
+    <!-- ═══ 操作行 ═══ -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:baselineAligned="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnUsbLearn"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="开始学习半按" />
+
+        <TextView
+            android:id="@+id/btnUsbCancel"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="放弃" />
+
+        <TextView
+            android:id="@+id/btnUsbUnlock"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="解除锁定" />
+
+        <TextView
+            android:id="@+id/usbHint"
+            style="@style/RcTag"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="18dp"
+            android:layout_weight="1"
+            android:text="USB 通道打开后，点「开始学习半按」"
+            android:textColor="@color/rc_warn" />
+    </LinearLayout>
+
+    <!-- ═══ 数据区 ═══ -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="10dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_panel"
+        android:padding="16dp"
+        android:scrollbars="vertical">
+
+        <TextView
+            android:id="@+id/usbText"
+            style="@style/RcBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/rc_text"
+            android:typeface="monospace" />
+    </ScrollView>
+
+</LinearLayout>
