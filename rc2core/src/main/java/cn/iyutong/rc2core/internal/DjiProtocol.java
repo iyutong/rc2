@@ -7,18 +7,13 @@ import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteException;
 import android.os.SystemClock;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 与 DJI {@code protocol} Binder 服务的唯一接触点。内部实现，宿主不需要直接使用。
  *
- * <p>做三件事：
+ * <p>只做两件事：
  * <ol>
- *   <li>transact(2) 订阅 cmdSet 6 / cmd 174 的按键上报；</li>
- *   <li>transact(2) 按宿主请求额外订阅任意 cmdSet/cmdId（探针用）；</li>
+ *   <li>transact(2) 订阅 cmdSet 6 / cmd 174 的上报（按键与挡位都在这条报文里）；</li>
  *   <li>transact(4) 按固定间隔查询摇杆 6 通道。</li>
  * </ol>
  * 报文解析放在上层，这里只负责取字节。
@@ -71,13 +66,6 @@ public final class DjiProtocol {
 
     /** 主订阅（6/174）的接收端。 */
     private final Binder pushes = newListener();
-
-    /**
-     * 自定义订阅的接收端，key = {@code cmdSet << 16 | cmdId}。
-     * 每路一个 Binder：transact(5) 退订只认 Binder、不带 filter，
-     * 共用一个接收端就没法单独注销其中一路。
-     */
-    private final Map<Integer, Binder> extras = new LinkedHashMap<>();
 
     private Binder newListener() {
         return new Binder() {
@@ -171,14 +159,13 @@ public final class DjiProtocol {
         worker.post(this::bind);
     }
 
-    /** 幂等停止：退订（含所有自定义订阅）并结束线程。 */
+    /** 幂等停止：退订并结束线程。 */
     public void stop() {
         if (!running) {
             return;
         }
         running = false;
         worker.removeCallbacksAndMessages(null);
-        unsubscribeAllExtra();
         transactUnsubscribe(pushes);
         thread.quitSafely();
     }
@@ -207,42 +194,24 @@ public final class DjiProtocol {
         poll();
     }
 
+    /** transact(2)：订阅主通道，filter {@code {4, 2, 0, 6, 6, 174}}。 */
     private boolean subscribe() {
-        if (transactSubscribe(MAIN_CMD_SET, MAIN_CMD_ID, pushes)) {
-            return true;
-        }
-        sink.onError("按键订阅失败：" + MAIN_CMD_SET + "/" + MAIN_CMD_ID + " 被拒绝");
-        return false;
-    }
-
-    /**
-     * transact(2)：订阅一个 cmdSet/cmdId。
-     *
-     * <p>filter 结构与主线一致 {@code {4, 2, 0, cmdSet, cmdSet, cmdId}}，
-     * 只有 cmdSet/cmdId 两个位置可变；服务端不校验 cmd 是否存在时也照样返回成功，
-     * 所以「订阅成功」不等于「这个 cmd 真的有数据」。
-     *
-     * @return 服务是否接受（{@code readException()} 没抛异常）
-     */
-    private boolean transactSubscribe(int cmdSet, int cmdId, Binder listener) {
-        if (service == null) {
-            return false;
-        }
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
         try {
             data.writeInterfaceToken(DESCRIPTOR);
             data.writeInt(1);
             data.writeInt(1);
-            int[] filter = {4, 2, 0, cmdSet, cmdSet, cmdId};
+            int[] filter = {4, 2, 0, MAIN_CMD_SET, MAIN_CMD_SET, MAIN_CMD_ID};
             for (int v : filter) {
                 data.writeInt(v);
             }
-            data.writeStrongBinder(listener);
+            data.writeStrongBinder(pushes);
             service.transact(TX_SUBSCRIBE, data, reply, 0);
             reply.readException();
             return true;
         } catch (Exception e) {
+            sink.onError("按键订阅失败：" + e.getClass().getSimpleName());
             return false;
         } finally {
             data.recycle();
@@ -268,70 +237,6 @@ public final class DjiProtocol {
             data.recycle();
             reply.recycle();
         }
-    }
-
-    /**
-     * 额外订阅一路 cmdSet/cmdId，报文同样走 {@link Sink#onPush}。
-     *
-     * <p>会做一次 Binder 调用（通常几毫秒），不要在主线程批量循环调用。
-     *
-     * @return 服务是否接受；已经订阅过直接返回 true
-     */
-    public boolean subscribeExtra(int cmdSet, int cmdId) {
-        if (!running || service == null) {
-            return false;
-        }
-        int key = key(cmdSet, cmdId);
-        synchronized (extras) {
-            if (extras.containsKey(key)) {
-                return true;
-            }
-        }
-        Binder listener = newListener();
-        if (!transactSubscribe(cmdSet, cmdId, listener)) {
-            return false;
-        }
-        synchronized (extras) {
-            extras.put(key, listener);
-        }
-        return true;
-    }
-
-    /** 退订一路额外订阅；没订阅过时什么也不做。 */
-    public void unsubscribeExtra(int cmdSet, int cmdId) {
-        Binder listener;
-        synchronized (extras) {
-            listener = extras.remove(key(cmdSet, cmdId));
-        }
-        if (listener != null) {
-            transactUnsubscribe(listener);
-        }
-    }
-
-    /** 退订所有额外订阅，主订阅（6/174）不动。 */
-    public void unsubscribeAllExtra() {
-        List<Binder> all;
-        synchronized (extras) {
-            if (extras.isEmpty()) {
-                return;
-            }
-            all = new ArrayList<>(extras.values());
-            extras.clear();
-        }
-        for (Binder b : all) {
-            transactUnsubscribe(b);
-        }
-    }
-
-    /** 当前额外订阅的 key 列表，{@code cmdSet << 16 | cmdId}。 */
-    public List<Integer> extraKeys() {
-        synchronized (extras) {
-            return new ArrayList<>(extras.keySet());
-        }
-    }
-
-    private static int key(int cmdSet, int cmdId) {
-        return (cmdSet << 16) | (cmdId & 0xFFFF);
     }
 
     private void poll() {

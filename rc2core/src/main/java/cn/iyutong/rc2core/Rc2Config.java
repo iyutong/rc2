@@ -17,8 +17,6 @@ public final class Rc2Config {
      * 若确认设备会周期性重发按键报文，可以设成 1500 之类的值。
      */
     public final int buttonTimeoutMs;
-    /** 推送包环形缓存容量，供 {@link Rc2Controller#packets()} 查询。 */
-    public final int packetRing;
     /** 回调线程：null 表示在 Binder/轮询线程直接回调；设为主线程 Handler 则自动切线程。 */
     public final Handler callbackHandler;
     /** 日志出口，默认写 logcat。 */
@@ -27,7 +25,6 @@ public final class Rc2Config {
     private Rc2Config(Builder b) {
         this.pollIntervalMs = b.pollIntervalMs;
         this.buttonTimeoutMs = b.buttonTimeoutMs;
-        this.packetRing = b.packetRing;
         this.callbackHandler = b.callbackHandler;
         this.logger = b.logger;
     }
@@ -43,7 +40,6 @@ public final class Rc2Config {
     public static final class Builder {
         private int pollIntervalMs = 40;
         private int buttonTimeoutMs = 0;
-        private int packetRing = 128;
         private Handler callbackHandler;
         private Rc2Log logger = Rc2Log.ANDROID;
 
@@ -56,12 +52,6 @@ public final class Rc2Config {
         /** 按键自动释放超时，0 关闭。 */
         public Builder buttonTimeoutMs(int ms) {
             this.buttonTimeoutMs = Math.max(0, ms);
-            return this;
-        }
-
-        /** 推送包缓存条数，0 表示不缓存。 */
-        public Builder packetRing(int size) {
-            this.packetRing = Math.max(0, size);
             return this;
         }
 

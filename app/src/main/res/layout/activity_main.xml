@@ -10,6 +10,4 @@
 
     <include layout="@layout/page_raw" />
 
-    <include layout="@layout/page_probe" />
-
 </ViewFlipper>

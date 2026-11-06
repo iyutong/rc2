@@ -10,7 +10,6 @@ import android.widget.ViewFlipper;
 import cn.iyutong.rc2core.Rc2Config;
 import cn.iyutong.rc2core.Rc2Controller;
 import local.rc2.xbox.page.DashboardPage;
-import local.rc2.xbox.page.ProbePage;
 import local.rc2.xbox.page.RawPage;
 import local.rc2.xbox.ui.Ui;
 import local.rc2.xbox.ui.UiLog;
@@ -18,21 +17,19 @@ import local.rc2.xbox.ui.UiLog;
 /**
  * 宿主：只负责页面切换、生命周期和帧循环。
  *
- * <p>数据来自 {@link Rc2Controller}（{@code cn.iyutong.rc2core}），界面拆成三个 page 类：
- * 仪表盘 / 原始报文 / 推送探针。三层之间只通过 Rc2Controller 的 getter 耦合，
+ * <p>数据来自 {@link Rc2Controller}（{@code cn.iyutong.rc2core}），界面拆成两个 page 类：
+ * 仪表盘 / 原始报文。三层之间只通过 Rc2Controller 的 getter 耦合，
  * 想换 UI 不用碰协议，想换协议不用碰 UI。
  */
 public class MainActivity extends Activity implements Choreographer.FrameCallback {
 
     private static final int PAGE_DASH = 0;
     private static final int PAGE_RAW = 1;
-    private static final int PAGE_PROBE = 2;
 
     private ViewFlipper pager;
     private Rc2Controller rc2;
     private DashboardPage dashboard;
     private RawPage rawPage;
-    private ProbePage probePage;
 
     private boolean animating;
     private long lastFrame;
@@ -55,17 +52,13 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
 
         dashboard = new DashboardPage(findViewById(R.id.pager));
         rawPage = new RawPage(findViewById(R.id.pager));
-        probePage = new ProbePage(findViewById(R.id.pager));
 
         rc2 = Rc2Controller.create(Rc2Config.builder()
                 .logger(UiLog.SINK)
                 .build());
 
         findViewById(R.id.btnRaw).setOnClickListener(v -> show(PAGE_RAW));
-        findViewById(R.id.btnProbe).setOnClickListener(v -> show(PAGE_PROBE));
         findViewById(R.id.btnBackFromRaw).setOnClickListener(v -> show(PAGE_DASH));
-        findViewById(R.id.btnBackFromProbe).setOnClickListener(v -> show(PAGE_DASH));
-        findViewById(R.id.btnBackToRaw).setOnClickListener(v -> show(PAGE_RAW));
     }
 
     private void applyFullscreen() {
@@ -82,8 +75,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         pager.setDisplayedChild(page);
         if (page == PAGE_RAW) {
             rawPage.refresh(rc2);
-        } else if (page == PAGE_PROBE) {
-            probePage.refresh(rc2);
         }
     }
 
@@ -154,8 +145,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
             pageWindow = now;
             if (page == PAGE_RAW) {
                 rawPage.refresh(rc2);
-            } else if (page == PAGE_PROBE) {
-                probePage.refresh(rc2);
             }
         }
         Choreographer.getInstance().postFrameCallback(this);

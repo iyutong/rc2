@@ -46,10 +46,6 @@ public interface Rc2Listener {
     default void onFlightMode(FlightMode mode, int rawByte) {
     }
 
-    /** 每收到一条推送包都会回调，诊断用。 */
-    default void onPacket(Rc2Packet packet) {
-    }
-
     /** 收到一条 Android 层按键事件。 */
     default void onKey(KeySample key) {
     }

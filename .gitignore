@@ -13,4 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
-/rc2core/build/
+/rc2core/build
+/app/build
