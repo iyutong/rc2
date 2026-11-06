@@ -1,5 +1,7 @@
 package cn.iyutong.rc2core;
 
+import androidx.annotation.NonNull;
+
 import java.util.Locale;
 
 /**
@@ -93,7 +95,7 @@ public final class Sticks {
     /** 把原始值按 1024 中位、660 满偏归一化到 -1～1。 */
     public static float norm(int value) {
         float f = (value - CENTER) / (float) SPAN;
-        return f < -1f ? -1f : (f > 1f ? 1f : f);
+        return f < -1f ? -1f : (Math.min(f, 1f));
     }
 
     /** 原始值 → 0～255 的字节量，用于拨轮的十六进制显示。 */
@@ -101,6 +103,7 @@ public final class Sticks {
         return Math.max(0, Math.min(255, Math.round((normalized(channel) + 1f) / 2f * 255f)));
     }
 
+    @NonNull
     @Override
     public String toString() {
         return String.format(Locale.US, "RX %d RY %d LY %d LX %d LT %d RT %d",

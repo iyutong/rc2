@@ -2,6 +2,8 @@ package cn.iyutong.rc2core;
 
 import android.view.KeyEvent;
 
+import androidx.annotation.NonNull;
+
 /**
  * 一条 Android 按键事件（走系统输入层，不是 MCU 报文）。
  *
@@ -45,6 +47,7 @@ public final class KeySample {
         return label.isEmpty() ? keyName : label;
     }
 
+    @NonNull
     @Override
     public String toString() {
         return (isDown() ? "按下 " : "松开 ") + shortLabel() + " (" + keyName

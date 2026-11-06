@@ -1,5 +1,6 @@
 package cn.iyutong.rc2core.internal;
 
+import android.annotation.SuppressLint;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -7,6 +8,9 @@ import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteException;
 import android.os.SystemClock;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 /**
  * 与 DJI {@code protocol} Binder 服务的唯一接触点。内部实现，宿主不需要直接使用。
@@ -70,20 +74,21 @@ public final class DjiProtocol {
     private Binder newListener() {
         return new Binder() {
             @Override
-            protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
-                    throws RemoteException {
-                return dispatch(code, data, reply);
+            protected boolean onTransact(int code, @NonNull Parcel data, @Nullable Parcel reply,
+                    int flags) {
+                dispatch(code, data, reply);
+                return true;
             }
         };
     }
 
     /** 所有接收端共用的解包逻辑：读 15 个 int 头 + 负载，交给上层。 */
-    private boolean dispatch(int code, Parcel data, Parcel reply) throws RemoteException {
+    private void dispatch(int code, @NonNull Parcel data, @Nullable Parcel reply) {
         if (code == IBinder.INTERFACE_TRANSACTION) {
             if (reply != null) {
                 reply.writeString(LISTENER);
             }
-            return true;
+            return;
         }
         if (code == IBinder.FIRST_CALL_TRANSACTION) {
             data.enforceInterface(LISTENER);
@@ -102,13 +107,12 @@ public final class DjiProtocol {
                 sink.onError("推送报文解码失败：" + e);
             }
         }
-        return true;
     }
 
     private final Binder queryCallback = new Binder() {
         @Override
-        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags)
-                throws RemoteException {
+        protected boolean onTransact(int code, @NonNull Parcel data, @Nullable Parcel reply,
+                int flags) throws RemoteException {
             if (code == IBinder.INTERFACE_TRANSACTION) {
                 if (reply != null) {
                     reply.writeString(LISTENER);
@@ -170,10 +174,12 @@ public final class DjiProtocol {
         thread.quitSafely();
     }
 
-    public boolean isRunning() {
-        return running;
-    }
-
+    /**
+     * 反射拿 {@code android.os.ServiceManager}：这个类不在公开 SDK 里，只能走 {@code Class.forName}
+     * + {@code getMethod}。私有 API 限制（API 28+）的灰名单允许普通应用这样调用，
+     * 只是会打一条 "Accessing hidden API" 的 log；拿不到就当服务不存在，降级走 {@code onReady(false)}。
+     */
+    @SuppressLint("PrivateApi")
     private void bind() {
         try {
             service = (IBinder) Class.forName("android.os.ServiceManager")

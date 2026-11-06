@@ -1,5 +1,7 @@
 package cn.iyutong.rc2core;
 
+import androidx.annotation.NonNull;
+
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -64,6 +66,7 @@ public final class Rc2State {
         return label != null && heldLabels.contains(label);
     }
 
+    @NonNull
     @Override
     public String toString() {
         return "Rc2State{connected=" + connected + ", mode=" + flightMode

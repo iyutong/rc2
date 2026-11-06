@@ -23,5 +23,6 @@ android {
 // 迁移时整包拷走即可，也可以 `./gradlew :rc2core:assembleRelease` 出 AAR。
 
 dependencies {
+    implementation(libs.annotation)
     testImplementation(libs.junit)
 }

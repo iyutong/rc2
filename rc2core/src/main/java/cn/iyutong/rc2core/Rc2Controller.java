@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import cn.iyutong.rc2core.internal.ButtonCodec;
 import cn.iyutong.rc2core.internal.DjiProtocol;
 
@@ -58,8 +59,9 @@ public final class Rc2Controller {
     private volatile String status = "未启动";
     private volatile Sticks sticks = Sticks.center();
     private volatile long sampleAt;
-    private volatile long samples;
-    private volatile long packets;
+    /** 计数器会在 Binder 线程池里并发累加，用原子类型避免 x++ 的读-改-写丢计数。 */
+    private final AtomicLong samples = new AtomicLong();
+    private final AtomicLong packets = new AtomicLong();
     private volatile FlightMode mode = FlightMode.UNKNOWN;
     private volatile int modeByte = -1;
     /** 挡位码（b2 低 2 位）。判定变更只认它，不认原始字节，见 handleMode。 */
@@ -188,7 +190,7 @@ public final class Rc2Controller {
 
     /** 累计摇杆采样数，可用于算 Hz。 */
     public long samples() {
-        return samples;
+        return samples.get();
     }
 
     /** 最近一秒内是否有数据，判断「活的」比 isConnected 更可靠。 */
@@ -288,7 +290,7 @@ public final class Rc2Controller {
 
     /** 累计推送包数。 */
     public long packetCount() {
-        return packets;
+        return packets.get();
     }
 
     /**
@@ -328,7 +330,7 @@ public final class Rc2Controller {
     public Rc2State snapshot() {
         synchronized (lock) {
             return new Rc2State(connected, status, sticks, mode, modeByte, modeCode, modeSource,
-                    pressedMask, heldLabels(), packets, samples, rawButtons, lastDiff,
+                    pressedMask, heldLabels(), packets.get(), samples.get(), rawButtons, lastDiff,
                     SystemClock.uptimeMillis());
         }
     }
@@ -343,7 +345,7 @@ public final class Rc2Controller {
             Sticks s = Sticks.of(channels);
             sticks = s;
             sampleAt = now;
-            samples++;
+            samples.incrementAndGet();
             expireButtonsIfIdle(now);
             for (Rc2Listener l : listeners) {
                 emit(() -> l.onSticks(s));
@@ -360,7 +362,7 @@ public final class Rc2Controller {
             int cmdId = header.length > 14 ? header[14] : -1;
             int type = header.length > 5 ? header[5] : -1;
 
-            packets++;
+            packets.incrementAndGet();
 
             // 只处理主通道：按键在 type 2 的负载里，挡位在同一条 17 字节报文的 b2。
             boolean main = cmdSet == DjiProtocol.MAIN_CMD_SET && cmdId == DjiProtocol.MAIN_CMD_ID;
@@ -448,8 +450,7 @@ public final class Rc2Controller {
         int b2 = payload[2] & 0xff;
         int code = FlightMode.code(b2);
         synchronized (lock) {
-            Integer seen = modeSightings.get(code);
-            modeSightings.put(code, seen == null ? 1 : seen + 1);
+            modeSightings.compute(code, (k, seen) -> seen == null ? 1 : seen + 1);
             while (modeSightings.size() > 8) {
                 Integer oldest = modeSightings.keySet().iterator().next();
                 modeSightings.remove(oldest);

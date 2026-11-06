@@ -13,7 +13,7 @@ package cn.iyutong.rc2core;
  *         pad.setPosition(s.leftX(), s.leftY());
  *     }
  *     &#64;Override public void onButton(RcButton b, boolean pressed) {
- *         if (b == RcButton.SHUTTER &amp;&amp; pressed) shoot();
+ *         if (b == RcButton. SHUTTER &amp;&amp; pressed) shoot();
  *     }
  *     &#64;Override public void onFlightMode(FlightMode mode, int rawByte) {
  *         hud.setText(mode.label());

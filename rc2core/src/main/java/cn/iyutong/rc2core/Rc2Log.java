@@ -15,16 +15,13 @@ public interface Rc2Log {
     void log(char level, String tag, String message);
 
     /** 默认实现：写 logcat。 */
-    Rc2Log ANDROID = new Rc2Log() {
-        @Override
-        public void log(char level, String tag, String message) {
-            if (level == 'E') {
-                android.util.Log.e(tag, message);
-            } else if (level == 'W') {
-                android.util.Log.w(tag, message);
-            } else {
-                android.util.Log.i(tag, message);
-            }
+    Rc2Log ANDROID = (level, tag, message) -> {
+        if (level == 'E') {
+            android.util.Log.e(tag, message);
+        } else if (level == 'W') {
+            android.util.Log.w(tag, message);
+        } else {
+            android.util.Log.i(tag, message);
         }
     };
 }
