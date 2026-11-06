@@ -48,6 +48,9 @@ public final class Rc2Controller {
 
     private static final String TAG = "Input";
 
+    /** 自定义订阅上限：每路占一个 Binder 接收端，太多会拖慢服务端的派发。 */
+    private static final int MAX_CUSTOM_SUBS = 8;
+
     private final Rc2Config config;
     private final CopyOnWriteArrayList<Rc2Listener> listeners = new CopyOnWriteArrayList<>();
 
@@ -72,6 +75,8 @@ public final class Rc2Controller {
     /** 需要跨字段一致的写入用这把锁。 */
     private final Object lock = new Object();
     private final LinkedHashSet<String> keyHeld = new LinkedHashSet<>();
+    /** 自定义订阅的签名，形如 "6/200"。 */
+    private final LinkedHashSet<String> customSubs = new LinkedHashSet<>();
     private final ArrayDeque<Rc2Packet> packetRing = new ArrayDeque<>();
     private final ArrayDeque<byte[]> changedFrames = new ArrayDeque<>();
     private final LinkedHashMap<Integer, Integer> modeSightings = new LinkedHashMap<>();
@@ -129,6 +134,7 @@ public final class Rc2Controller {
             connected = false;
             status = "已停止";
             keyHeld.clear();
+            customSubs.clear();
         }
         if (p != null) {
             p.stop();
@@ -292,6 +298,90 @@ public final class Rc2Controller {
         return packets;
     }
 
+    // ───────────────────── 自定义订阅（排查用） ─────────────────────
+
+    /**
+     * 额外订阅一路 {@code cmdSet/cmdId}，报文会与主通道一样进 {@link #packets()} 并触发
+     * {@link Rc2Listener#onPacket}。
+     *
+     * <p>用途：探针页排查「某个动作到底有没有走别的 cmd」。服务端不校验 cmd 是否存在，
+     * <b>返回 true 只代表服务接受了这个 filter</b>，有没有数据还得看 {@link #packets()}。
+     *
+     * <p>会做一次 Binder 调用（通常几毫秒），别在主线程里循环调用。
+     *
+     * @return 是否订阅成功；主通道 6/174、负数（服务不支持 -1 通配）、未启动时返回 false
+     */
+    public boolean subscribe(int cmdSet, int cmdId) {
+        DjiProtocol p = protocol;
+        String sig = cmdSet + "/" + cmdId;
+        if (!started || p == null) {
+            log('W', "Probe", "未启动，无法订阅 " + sig);
+            return false;
+        }
+        if (cmdSet == DjiProtocol.MAIN_CMD_SET && cmdId == DjiProtocol.MAIN_CMD_ID) {
+            log('W', "Probe", "主通道 " + sig + " 已在订阅，不必重复");
+            return false;
+        }
+        if (cmdSet < 0 || cmdId < 0) {
+            log('W', "Probe", "不接受负值（服务不支持 -1 通配）");
+            return false;
+        }
+        synchronized (lock) {
+            if (customSubs.size() >= MAX_CUSTOM_SUBS) {
+                log('W', "Probe", "自定义订阅已达上限 " + MAX_CUSTOM_SUBS + " 路，先退订再用");
+                return false;
+            }
+        }
+        boolean ok = p.subscribeExtra(cmdSet, cmdId);
+        synchronized (lock) {
+            if (ok) {
+                customSubs.add(sig);
+            }
+        }
+        if (ok) {
+            log('I', "Probe", "已订阅 " + sig + "，等待推送");
+        } else {
+            log('W', "Probe", "订阅被拒绝 " + sig);
+        }
+        return ok;
+    }
+
+    /** 退订一路自定义订阅。 */
+    public void unsubscribe(int cmdSet, int cmdId) {
+        String sig = cmdSet + "/" + cmdId;
+        DjiProtocol p = protocol;
+        if (p != null) {
+            p.unsubscribeExtra(cmdSet, cmdId);
+        }
+        synchronized (lock) {
+            customSubs.remove(sig);
+        }
+        log('I', "Probe", "已退订 " + sig);
+    }
+
+    /** 退订所有自定义订阅；主通道 6/174 不受影响。 */
+    public void unsubscribeAll() {
+        DjiProtocol p = protocol;
+        int n;
+        synchronized (lock) {
+            n = customSubs.size();
+            customSubs.clear();
+        }
+        if (p != null) {
+            p.unsubscribeAllExtra();
+        }
+        if (n > 0) {
+            log('I', "Probe", "已退订全部自定义订阅（" + n + " 路）");
+        }
+    }
+
+    /** 当前自定义订阅的签名列表（副本），形如 {@code ["6/200", "6/300"]}。 */
+    public List<String> customSubscriptions() {
+        synchronized (lock) {
+            return new ArrayList<>(customSubs);
+        }
+    }
+
     /** 推送包缓存（最新的在末尾）。 */
     public List<Rc2Packet> packets() {
         synchronized (lock) {
@@ -382,10 +472,13 @@ public final class Rc2Controller {
                 }
             }
 
-            if (cmdSet == 6 && cmdId == 174 && type == 2) {
+            // 只有主通道的报文才参与按键/挡位解析；自定义订阅（探针）只进 packetRing，
+            // 否则随便订一个 17 字节的 cmd 就会把挡位带偏。
+            boolean main = cmdSet == DjiProtocol.MAIN_CMD_SET && cmdId == DjiProtocol.MAIN_CMD_ID;
+            if (main && type == 2) {
                 handleButtons(payload, now);
             }
-            if (payload.length == 17) {
+            if (main && payload.length == 17) {
                 handleMode(cmdSet, cmdId, type, payload);
             }
         }

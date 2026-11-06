@@ -55,6 +55,84 @@
         android:layout_marginTop="10dp"
         android:background="@color/rc_line" />
 
+    <!-- 自定义订阅：任意 cmdSet / cmdId 抓包 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            style="@style/RcTag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="订阅" />
+
+        <EditText
+            android:id="@+id/probeCmdSet"
+            style="@style/RcInput"
+            android:layout_width="96dp"
+            android:layout_height="46dp"
+            android:layout_marginStart="10dp"
+            android:hint="set"
+            android:imeOptions="actionNext" />
+
+        <TextView
+            style="@style/RcTag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="/" />
+
+        <EditText
+            android:id="@+id/probeCmdId"
+            style="@style/RcInput"
+            android:layout_width="130dp"
+            android:layout_height="46dp"
+            android:layout_marginStart="8dp"
+            android:hint="cmd"
+            android:imeOptions="actionDone" />
+
+        <TextView
+            android:id="@+id/btnProbeSub"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="订阅" />
+
+        <TextView
+            android:id="@+id/btnProbeUnsubAll"
+            style="@style/RcLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="全部退订"
+            android:textColor="@color/rc_muted" />
+
+        <TextView
+            android:id="@+id/probeSubState"
+            style="@style/RcValue"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/probeSubChips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
