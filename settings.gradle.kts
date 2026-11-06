@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "RC2 全局手柄"
 include(":app")
+include(":rc2core")

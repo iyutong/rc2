@@ -33,6 +33,8 @@ android {
 }
 
 dependencies {
+    // 遥控器输入核心库：承载 protocol 订阅与报文解码，与 UI 完全解耦
+    implementation(project(":rc2core"))
     implementation(libs.appcompat)
     implementation(libs.material)
     testImplementation(libs.junit)

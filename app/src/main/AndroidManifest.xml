@@ -8,7 +8,7 @@
         android:process="com.dpad.fuli"
         android:allowBackup="false">
         <activity
-            android:name="local.rc2.controls.MainActivity"
+            android:name="local.rc2.xbox.MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
             android:configChanges="keyboardHidden|orientation|screenSize">
