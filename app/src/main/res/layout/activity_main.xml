@@ -12,6 +12,4 @@
 
     <include layout="@layout/page_probe" />
 
-    <include layout="@layout/page_scan" />
-
 </ViewFlipper>

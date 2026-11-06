@@ -16,8 +16,9 @@ import android.widget.ViewFlipper;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import local.rc2.xbox.R;
 import org.json.JSONObject;
+
+import local.rc2.xbox.R;
 
 /**
  * 仪表盘宿主：布局由 XML 声明，这里只负责把 InputMonitor 的状态写进控件。
@@ -28,7 +29,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private static final int PAGE_DASH = 0;
     private static final int PAGE_RAW = 1;
     private static final int PAGE_PROBE = 2;
-    private static final int PAGE_SCAN = 3;
 
     private ViewFlipper pager;
     private TextView stateText;
@@ -60,10 +60,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private TextView probeSigs;
     private TextView probeRing;
     private ScrollView probeScroll;
-    private TextView cmdSummary;
-    private TextView scanText;
-    private ScrollView scanScroll;
-    private TextView btnScanToggle;
 
     private final float[] smooth = new float[6];
     private final HashSet<String> held = new HashSet<>();
@@ -82,7 +78,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     private long rawRevision = -1;
     private long probeSeen = -1;
     private long modeSeen = -1;
-    private long cmdSeen = -1;
     private String lastStickL = "";
     private String lastStickR = "";
     private String lastDialL = "";
@@ -108,18 +103,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         findViewById(R.id.btnBackFromRaw).setOnClickListener(v -> show(PAGE_DASH));
         findViewById(R.id.btnBackFromProbe).setOnClickListener(v -> show(PAGE_DASH));
         findViewById(R.id.btnBackToRaw).setOnClickListener(v -> show(PAGE_RAW));
-        findViewById(R.id.btnToScan).setOnClickListener(v -> show(PAGE_SCAN));
-        findViewById(R.id.btnBackToProbe).setOnClickListener(v -> show(PAGE_PROBE));
-        findViewById(R.id.btnBackFromScan).setOnClickListener(v -> show(PAGE_DASH));
-        findViewById(R.id.btnScanToggle).setOnClickListener(v -> {
-            if (InputMonitor.cmdProbeRunning) {
-                InputMonitor.stopCmdProbe();
-            } else {
-                InputMonitor.startCmdProbe();
-            }
-            cmdSeen = -1;
-            refreshCmd();
-        });
     }
 
     private void bind() {
@@ -153,10 +136,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         probeSigs = findViewById(R.id.probeSigs);
         probeRing = findViewById(R.id.probeRing);
         probeScroll = findViewById(R.id.probeScroll);
-        cmdSummary = findViewById(R.id.scanSummary);
-        scanText = findViewById(R.id.scanText);
-        scanScroll = findViewById(R.id.scanScroll);
-        btnScanToggle = findViewById(R.id.btnScanToggle);
     }
     private void applyFullscreen() {
         getWindow().getDecorView().setSystemUiVisibility(
@@ -170,10 +149,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
 
     private void show(int page) {
         pager.setDisplayedChild(page);
-        if (page == PAGE_SCAN) {
-            cmdSeen = -1;
-            refreshCmd();
-        }
         if (page == PAGE_RAW) {
             rawRevision = -1;
             refreshRaw();
@@ -202,7 +177,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
     protected void onStart() {
         super.onStart();
         InputMonitor.start();
-        cmdSeen = -1;
     }
 
     @Override
@@ -262,8 +236,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
                 refreshRaw();
             } else if (page == PAGE_PROBE) {
                 refreshProbe();
-            } else if (page == PAGE_SCAN) {
-                refreshCmd();
             }
         }
         Choreographer.getInstance().postFrameCallback(this);
@@ -535,52 +507,6 @@ public class MainActivity extends Activity implements Choreographer.FrameCallbac
         }
         probeRing.setText(r);
         probeScroll.post(() -> probeScroll.fullScroll(View.FOCUS_DOWN));
-    }
-
-    /**
-     * cmd 枚举页：逐个试探 cmdSet=6 下的 cmdId，显示进度与命中的 cmd。
-     * 仅在 revision 变化时重绘，避免每帧重建网格文本。
-     */
-    private void refreshCmd() {
-        long rev = InputMonitor.cmdRevision;
-        if (rev == cmdSeen) {
-            return;
-        }
-        cmdSeen = rev;
-
-        List<Integer> hits = InputMonitor.cmdHits();
-        int total = InputMonitor.PROBE_TO - InputMonitor.PROBE_FROM + 1;
-        int done = Math.max(0, Math.min(total,
-                InputMonitor.cmdCursor - InputMonitor.PROBE_FROM + 1));
-
-        cmdSummary.setText(String.format(Locale.US, "%s · %d/%d · 命中 %d · %d ms",
-                InputMonitor.cmdState, done, total, hits.size(), InputMonitor.cmdElapsed));
-        btnScanToggle.setText(InputMonitor.cmdProbeRunning ? "停止" : "开始扫描");
-
-        if (hits.isEmpty()) {
-            scanText.setText(InputMonitor.cmdProbeRunning
-                    ? "正在逐个试探 cmdSet=6 的 cmdId，请稍候…"
-                    : "尚未命中。点右上「开始扫描」枚举 cmdSet=6 / cmdId 0–4095。");
-            return;
-        }
-
-        SpannableStringBuilder sb = new SpannableStringBuilder();
-        for (int i = 0; i < hits.size(); i++) {
-            int start = sb.length();
-            sb.append(String.format(Locale.US, "%-11s", InputMonitor.PROBE_CMD_SET + "/" + hits.get(i)));
-            sb.setSpan(new ForegroundColorSpan(0xff88ffe2), start, sb.length(),
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            if ((i + 1) % 6 == 0) {
-                sb.append('\n');
-            }
-        }
-        if (hits.size() % 6 != 0) {
-            sb.append('\n');
-        }
-        if (hits.size() >= total) {
-            sb.append("\n全部 cmdId 都被接受，说明服务端不校验 cmd 是否存在，\n此路无法区分真实通道。");
-        }
-        scanText.setText(sb);
     }
 
     private float norm(int v) {

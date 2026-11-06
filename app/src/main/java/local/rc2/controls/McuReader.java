@@ -38,33 +38,6 @@ final class McuReader {
         }
     };
 
-    /** 枚举时用来试探订阅的接收端：只确认服务是否接受，不处理任何数据。 */
-    private final Binder sink = new Binder() {
-        @Override
-        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
-            if (code == IBinder.INTERFACE_TRANSACTION) {
-                if (reply != null) {
-                    reply.writeString("com.dji.protocol.IPackListener");
-                }
-                return true;
-            }
-            if (code == IBinder.FIRST_CALL_TRANSACTION) {
-                data.enforceInterface("com.dji.protocol.IPackListener");
-                try {
-                    if (data.readInt() != 0) {
-                        for (int i = 0; i < 15; i++) {
-                            data.readInt();
-                        }
-                        data.readInt();
-                        data.createByteArray();
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-            return true;
-        }
-    };
-
     private boolean onPush(int code, Parcel data, Parcel reply) throws RemoteException {
         if (code == IBinder.INTERFACE_TRANSACTION) {
             if (reply != null) {
@@ -243,95 +216,8 @@ final class McuReader {
         }
     }
 
-    /**
-     * 全量订阅：cmdSet 与 cmdId 都传 -1。服务端若支持通配，会把这个遥控器上报的
-     * 所有协议包都推过来；若不支持，本调用会抛异常或无数据，界面会显示 0 包。
-     */
-    /**
-     * 枚举 cmdSet 下 [from, to] 的 cmdId：逐个精确订阅，服务端接受（不抛异常）
-     * 即视为该 cmd 存在，立刻退订再试下一个。
-     * 必须跑在独立线程：几千次 Binder 调用若占用 worker，会把摇杆轮询卡住。
-     */
-    void startCmdProbe(int cmdSet, int from, int to) {
-        Thread t = new Thread(() -> {
-            if (service == null) {
-                InputMonitor.cmdState = "MCU 不可用";
-                InputMonitor.cmdProbeRunning = false;
-                InputMonitor.cmdRevision++;
-                return;
-            }
-            long begin = SystemClock.uptimeMillis();
-            for (int id = from; id <= to; id++) {
-                if (!InputMonitor.cmdProbeRunning || !running) {
-                    break;
-                }
-                if (trySubscribe(cmdSet, id)) {
-                    InputMonitor.cmdHit(id);
-                    dropSink();
-                }
-                InputMonitor.cmdCursor = id;
-                if ((id & 0x3F) == 0) {
-                    InputMonitor.cmdElapsed = SystemClock.uptimeMillis() - begin;
-                    InputMonitor.cmdRevision++;
-                }
-            }
-            InputMonitor.cmdElapsed = SystemClock.uptimeMillis() - begin;
-            InputMonitor.cmdProbeRunning = false;
-            InputMonitor.cmdState = InputMonitor.cmdCursor >= to ? "已完成" : "已中止";
-            InputMonitor.cmdRevision++;
-            UiLog.i("Cmd", "枚举结束，耗时 " + InputMonitor.cmdElapsed + " ms，命中 "
-                    + InputMonitor.cmdHits().size());
-        }, "rc2-cmd-probe");
-        t.setPriority(Thread.MIN_PRIORITY);
-        t.start();
-    }
-
-    /** 循环靠 cmdProbeRunning 标志退出，这里只负责让界面立刻反映"已中止"。 */
-    void stopCmdProbe() {
-        UiLog.w("Cmd", "请求中止枚举");
-    }
-
-    private boolean trySubscribe(int cmdSet, int cmdId) {
-        Parcel data = Parcel.obtain();
-        Parcel reply = Parcel.obtain();
-        try {
-            data.writeInterfaceToken("com.dji.protocol.IProtocolManager");
-            data.writeInt(1);
-            data.writeInt(1);
-            int[] filter = new int[]{4, 2, 0, cmdSet, cmdSet, cmdId};
-            for (int v : filter) {
-                data.writeInt(v);
-            }
-            data.writeStrongBinder(sink);
-            service.transact(2, data, reply, 0);
-            reply.readException();
-            return true;
-        } catch (Exception e) {
-            return false;
-        } finally {
-            data.recycle();
-            reply.recycle();
-        }
-    }
-
-    private void dropSink() {
-        Parcel data = Parcel.obtain();
-        Parcel reply = Parcel.obtain();
-        try {
-            data.writeInterfaceToken("com.dji.protocol.IProtocolManager");
-            data.writeStrongBinder(sink);
-            service.transact(5, data, reply, 0);
-            reply.readException();
-        } catch (Exception ignored) {
-        } finally {
-            data.recycle();
-            reply.recycle();
-        }
-    }
-
     void stop() {
         running = false;
-        InputMonitor.cmdProbeRunning = false;
         worker.removeCallbacksAndMessages(null);
         if (service != null) {
             Parcel data = Parcel.obtain();

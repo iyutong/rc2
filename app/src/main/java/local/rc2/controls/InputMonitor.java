@@ -91,17 +91,6 @@ public final class InputMonitor {
     private static final LinkedHashMap<String, Sig> sigMap = new LinkedHashMap<>();
     private static final ArrayList<Push> ring = new ArrayList<>();
 
-    /** cmd 枚举扫描：服务不支持 -1 通配，改为逐个精确 cmdId 试探订阅。 */
-    public static final int PROBE_CMD_SET = 6;
-    public static final int PROBE_FROM = 0;
-    public static final int PROBE_TO = 4095;
-    public static volatile boolean cmdProbeRunning;
-    public static volatile int cmdCursor;
-    public static volatile String cmdState = "未开始";
-    public static volatile long cmdRevision;
-    public static volatile long cmdElapsed;
-    private static final ArrayList<Integer> cmdHits = new ArrayList<>();
-
     /** 飞行模式报文长度：C/N/S 挡位在 17 字节报文的 b2 中上报。 */
     public static final int MODE_LEN = 17;
     /** 当前模式原始字节（b2），未收到时为 -1。 */
@@ -158,10 +147,6 @@ public final class InputMonitor {
 
     public static synchronized void stop() {
         running = false;
-        if (cmdProbeRunning) {
-            cmdProbeRunning = false;
-            cmdState = "已中止";
-        }
         if (reader != null) {
             reader.stop();
             reader = null;
@@ -231,58 +216,6 @@ public final class InputMonitor {
     /** 推送流水快照。 */
     public static synchronized List<Push> pushes() {
         return new ArrayList<>(ring);
-    }
-
-    /** 清空上一轮 cmd 枚举结果。 */
-    public static synchronized void cmdProbeReset() {
-        cmdHits.clear();
-        cmdCursor = PROBE_FROM - 1;
-        cmdElapsed = 0;
-        cmdState = "未开始";
-        cmdRevision++;
-    }
-
-    /** 记录一个订阅被服务端接受的 cmdId。 */
-    static synchronized void cmdHit(int cmdId) {
-        if (!cmdHits.contains(cmdId)) {
-            cmdHits.add(cmdId);
-        }
-        cmdRevision++;
-    }
-
-    public static synchronized List<Integer> cmdHits() {
-        return new ArrayList<>(cmdHits);
-    }
-
-    /** 开始枚举 cmdSet=6 下的 cmdId 区间，服务不可用时不启动。 */
-    public static void startCmdProbe() {
-        if (cmdProbeRunning) {
-            return;
-        }
-        if (reader == null) {
-            cmdState = "MCU 未连接";
-            cmdRevision++;
-            return;
-        }
-        cmdProbeReset();
-        cmdProbeRunning = true;
-        cmdState = "扫描中";
-        cmdRevision++;
-        reader.startCmdProbe(PROBE_CMD_SET, PROBE_FROM, PROBE_TO);
-        UiLog.i("Cmd", "开始枚举 " + PROBE_CMD_SET + "/" + PROBE_FROM + "–" + PROBE_TO);
-    }
-
-    public static void stopCmdProbe() {
-        if (!cmdProbeRunning) {
-            return;
-        }
-        cmdProbeRunning = false;
-        if (reader != null) {
-            reader.stopCmdProbe();
-        }
-        cmdState = "已中止";
-        cmdRevision++;
-        UiLog.w("Cmd", "枚举已中止，已扫到 " + cmdCursor);
     }
 
     /**
