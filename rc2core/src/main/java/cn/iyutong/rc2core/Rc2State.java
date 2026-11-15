@@ -59,7 +59,12 @@ public final class Rc2State {
     }
 
     public boolean isPressed(RcButton button) {
-        return button.isDown(pressedMask);
+        return button != null && button.isDown(pressedMask);
+    }
+
+    /** 是否至少有一个 MCU 按键按着。 */
+    public boolean anyPressed() {
+        return pressedMask != 0;
     }
 
     public boolean isHeld(String label) {

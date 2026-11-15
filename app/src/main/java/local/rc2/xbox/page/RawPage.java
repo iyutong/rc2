@@ -107,7 +107,7 @@ public final class RawPage {
         }
 
         sb.append("\n按键位：b0&0x70 | (b2&0x0C)<<8 | (b1&0x01)<<16，拍照位 0x40\n");
-        sb.append("飞行模式取 17 字节报文的 b2 低 3 位\n");
+        sb.append("飞行模式取 17 字节报文的 b2 低 2 位（bit2-3 是 C1/C2）\n");
         body.setText(sb);
     }
 }

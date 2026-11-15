@@ -4,10 +4,12 @@ import android.os.SystemClock;
 import android.view.KeyEvent;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
@@ -44,10 +46,19 @@ import cn.iyutong.rc2core.internal.DjiProtocol;
  * 默认回调发生在内部线程（Binder / 轮询线程），改 UI 需要自己 post。
  * 传 {@code Rc2Config.builder().callbackHandler(new Handler(Looper.getMainLooper()))}
  * 就自动切到主线程。getter 可以在任意线程调用。
+ *
+ * <h3>生命周期</h3>
+ * {@link #start()} / {@link #stop()} 都是幂等的，可以反复调用（对应 Activity 的
+ * onStart/onStop）。每次 start 会新建一条协议线程，stop 时把它退订并退出；
+ * 旧会话里迟到的回调会被 epoch 拦掉，不会污染新一轮的状态。
  */
 public final class Rc2Controller {
 
     private static final String TAG = "Input";
+    /** 变化帧环形缓冲的容量。 */
+    private static final int MAX_FRAMES = 16;
+    /** 挡位观测表最多记几种编码。 */
+    private static final int MAX_MODE_SIGHTINGS = 8;
 
     private final Rc2Config config;
     private final CopyOnWriteArrayList<Rc2Listener> listeners = new CopyOnWriteArrayList<>();
@@ -55,6 +66,13 @@ public final class Rc2Controller {
     /** 以下状态全部可以被任意线程读，写入只发生在内部线程。 */
     private volatile DjiProtocol protocol;
     private volatile boolean started;
+    /**
+     * 会话代号：每次 start/stop 自增，Sink 回调带着创建时的代号回来比对。
+     *
+     * <p>没有它会有两类脏数据：stop 之后仍在途的推送把 {@code pressedMask} 又写回非 0
+     * （按键永远亮着）；以及快速 stop→start 时旧连接的回调被当成新会话的事件。
+     */
+    private volatile int epoch;
     private volatile boolean connected;
     private volatile String status = "未启动";
     private volatile Sticks sticks = Sticks.center();
@@ -71,7 +89,13 @@ public final class Rc2Controller {
     private volatile byte[] rawButtons = new byte[0];
     private volatile String lastDiff = "—";
 
-    /** 需要跨字段一致的写入用这把锁。 */
+    /**
+     * 需要跨字段一致的写入用这把锁。
+     *
+     * <p>按键报文（推送线程）与摇杆报文（查询回调线程）是两条不同的 Binder 线程，
+     * 都可能去改 {@code pressedMask} / {@code buttonAt}，所以读-改-写必须串行化，
+     * 否则会丢按键事件或者出现「按住却报松开」。
+     */
     private final Object lock = new Object();
     private final LinkedHashSet<String> keyHeld = new LinkedHashSet<>();
     private final ArrayDeque<byte[]> changedFrames = new ArrayDeque<>();
@@ -104,43 +128,63 @@ public final class Rc2Controller {
 
     /** 幂等启动：连不上 protocol 服务时不会抛异常，只会走 {@code onReady(false, 原因)}。 */
     public void start() {
+        DjiProtocol p;
         synchronized (lock) {
             if (started) {
                 return;
             }
             started = true;
+            epoch++;
             status = "连接中";
-            DjiProtocol p = new DjiProtocol(new Sink(), config.pollIntervalMs);
+            // 新一轮会话从干净状态开始：旧会话的按键帧不能拿来做 diff 基准
+            priorButtons = null;
+            rawButtons = new byte[0];
+            lastDiff = "—";
+            buttonAt = 0;
+            pressedMask = 0;
+            p = new DjiProtocol(new Sink(epoch), config.pollIntervalMs);
             protocol = p;
-            p.start();
         }
+        // 建线程 + 订阅放在锁外：协议层一启动就会开始回调，没必要占着控制器锁
+        p.start();
         log('I', TAG, "开始监听遥控器");
     }
 
     /** 幂等停止：退订、停线程、把按住的键补一个松开事件。 */
     public void stop() {
         DjiProtocol p;
+        List<RcButton> released = null;
         synchronized (lock) {
             if (!started) {
                 return;
             }
             started = false;
+            epoch++;
             p = protocol;
             protocol = null;
             connected = false;
             status = "已停止";
             keyHeld.clear();
+            priorButtons = null;
+            rawButtons = new byte[0];
+            int mask = pressedMask;
+            if (mask != 0) {
+                pressedMask = 0;
+                released = new ArrayList<>(2);
+                for (RcButton b : RcButton.values()) {
+                    if (b.isDown(mask)) {
+                        released.add(b);
+                    }
+                }
+            }
         }
         if (p != null) {
             p.stop();
         }
-        int mask = pressedMask;
-        if (mask != 0) {
-            pressedMask = 0;
-            for (RcButton b : RcButton.values()) {
-                if (b.isDown(mask)) {
-                    emitButton(b, false);
-                }
+        // 回调放在锁外发，避免宿主在回调里反调本类造成死锁
+        if (released != null) {
+            for (RcButton b : released) {
+                emitButton(b, false);
             }
         }
         log('I', TAG, "停止监听");
@@ -195,7 +239,7 @@ public final class Rc2Controller {
 
     /** 最近一秒内是否有数据，判断「活的」比 isConnected 更可靠。 */
     public boolean isLive() {
-        return started && SystemClock.uptimeMillis() - sampleAt < 500;
+        return started && sampleAt != 0 && SystemClock.uptimeMillis() - sampleAt < 500;
     }
 
     public FlightMode flightMode() {
@@ -224,7 +268,7 @@ public final class Rc2Controller {
                 return "—";
             }
             StringBuilder sb = new StringBuilder();
-            for (java.util.Map.Entry<Integer, Integer> e : modeSightings.entrySet()) {
+            for (Map.Entry<Integer, Integer> e : modeSightings.entrySet()) {
                 if (sb.length() > 0) {
                     sb.append("  ");
                 }
@@ -281,10 +325,19 @@ public final class Rc2Controller {
         return lastDiff;
     }
 
-    /** 内容发生过变化的按键帧，时间升序。 */
+    /**
+     * 内容发生过变化的按键帧，时间升序；每个元素都是独立副本。
+     *
+     * <p>返回的是深拷贝：内部环形缓冲里的数组同时被 {@code priorButtons} 引用着，
+     * 直接漏出去的话调用方改一个字节就会把下一帧的差异计算带偏。
+     */
     public List<byte[]> changedFrames() {
         synchronized (lock) {
-            return new ArrayList<>(changedFrames);
+            List<byte[]> out = new ArrayList<>(changedFrames.size());
+            for (byte[] f : changedFrames) {
+                out.add(f.clone());
+            }
+            return out;
         }
     }
 
@@ -307,22 +360,22 @@ public final class Rc2Controller {
         if (e == null) {
             return;
         }
-        KeySample sample = new KeySample(e, SystemClock.uptimeMillis());
-        if (e.getAction() == KeyEvent.ACTION_DOWN) {
+        final KeySample sample = new KeySample(e, SystemClock.uptimeMillis());
+        final int action = e.getAction();
+        if (action == KeyEvent.ACTION_DOWN) {
             synchronized (lock) {
                 keyHeld.add(sample.shortLabel());
             }
             if (e.getRepeatCount() == 0) {
                 log('I', "Key", sample.toString());
             }
-        } else if (e.getAction() == KeyEvent.ACTION_UP) {
+        } else if (action == KeyEvent.ACTION_UP) {
             synchronized (lock) {
                 keyHeld.remove(sample.shortLabel());
             }
         }
         for (Rc2Listener l : listeners) {
-            final KeySample k = sample;
-            emit(() -> l.onKey(k));
+            emit(() -> l.onKey(sample));
         }
     }
 
@@ -337,10 +390,30 @@ public final class Rc2Controller {
 
     // ───────────────────────── 内部：协议回调 ─────────────────────────
 
+    /**
+     * 协议层回调的接收点。
+     *
+     * <p>每个回调先比一次 epoch：{@link #stop()} 之后仍在途的推送、以及快速
+     * stop→start 时旧连接的残留回调，都不该再改任何状态。
+     */
     private final class Sink implements DjiProtocol.Sink {
+
+        private final int session;
+
+        Sink(int session) {
+            this.session = session;
+        }
+
+        /** 是否为当前会话；false 表示这条回调来自已经停止的那一轮。 */
+        private boolean alive() {
+            return session == epoch && started;
+        }
 
         @Override
         public void onSticks(int[] channels) {
+            if (!alive()) {
+                return;
+            }
             long now = SystemClock.uptimeMillis();
             Sticks s = Sticks.of(channels);
             sticks = s;
@@ -354,7 +427,7 @@ public final class Rc2Controller {
 
         @Override
         public void onPush(int[] header, byte[] payload) {
-            if (payload == null) {
+            if (payload == null || !alive()) {
                 return;
             }
             long now = SystemClock.uptimeMillis();
@@ -376,6 +449,9 @@ public final class Rc2Controller {
 
         @Override
         public void onReady(boolean ready, String detail) {
+            if (!alive()) {
+                return;
+            }
             connected = ready;
             status = detail;
             if (ready) {
@@ -390,6 +466,9 @@ public final class Rc2Controller {
 
         @Override
         public void onError(String message) {
+            if (!alive()) {
+                return;
+            }
             status = message;
             log('W', "MCU", message);
             for (Rc2Listener l : listeners) {
@@ -400,35 +479,43 @@ public final class Rc2Controller {
 
     /** 按键报文 → 位掩码差异 → 逐个按键事件。 */
     private void handleButtons(byte[] payload, long now) {
-        int mask = ButtonCodec.mask(payload);
+        int mask;
         int prev;
+        List<RcButton> changed = null;
         synchronized (lock) {
+            mask = ButtonCodec.mask(payload);
             prev = pressedMask;
-            boolean changed = priorButtons == null
-                    || !java.util.Arrays.equals(priorButtons, payload);
-            if (changed) {
+
+            boolean frameChanged = priorButtons == null
+                    || !Arrays.equals(priorButtons, payload);
+            if (frameChanged) {
                 lastDiff = ButtonCodec.diff(priorButtons, payload);
                 priorButtons = payload.clone();
                 rawButtons = priorButtons;
                 changedFrames.addLast(priorButtons);
-                while (changedFrames.size() > 16) {
+                while (changedFrames.size() > MAX_FRAMES) {
                     changedFrames.removeFirst();
                 }
             }
             if (mask != 0) {
                 buttonAt = now;
             }
+            if (prev != mask) {
+                pressedMask = mask;
+                changed = new ArrayList<>(2);
+                for (RcButton b : RcButton.values()) {
+                    if (b.isDown(prev) != b.isDown(mask)) {
+                        changed.add(b);
+                    }
+                }
+            }
         }
-        if (prev == mask) {
+        if (changed == null) {
             return;
         }
-        pressedMask = mask;
-        for (RcButton b : RcButton.values()) {
-            boolean was = b.isDown(prev);
-            boolean is = b.isDown(mask);
-            if (was != is) {
-                emitButton(b, is);
-            }
+        // 事件在锁外发：宿主回调里读 isPressed 能拿到已更新的值，也不会卡住推送线程
+        for (RcButton b : changed) {
+            emitButton(b, b.isDown(mask));
         }
     }
 
@@ -451,7 +538,7 @@ public final class Rc2Controller {
         int code = FlightMode.code(b2);
         synchronized (lock) {
             modeSightings.compute(code, (k, seen) -> seen == null ? 1 : seen + 1);
-            while (modeSightings.size() > 8) {
+            while (modeSightings.size() > MAX_MODE_SIGHTINGS) {
                 Integer oldest = modeSightings.keySet().iterator().next();
                 modeSightings.remove(oldest);
             }
@@ -475,21 +562,38 @@ public final class Rc2Controller {
         }
     }
 
-    /** 可选的按键超时释放：报文丢了也不会一直亮着。默认关闭。 */
+    /**
+     * 可选的按键超时释放：报文丢了也不会一直亮着。默认关闭。
+     *
+     * <p>只在收到摇杆帧时检查 —— 摇杆是周期性的，正好可以当心跳；按键链路彻底断掉时
+     * 摇杆也会断，这时候宿主该看 {@link #isLive()} 而不是指望这里兜底。
+     */
     private void expireButtonsIfIdle(long now) {
-        if (config.buttonTimeoutMs <= 0 || pressedMask == 0 || buttonAt == 0) {
+        final int timeout = config.buttonTimeoutMs;
+        if (timeout <= 0) {
             return;
         }
-        if (now - buttonAt <= config.buttonTimeoutMs) {
-            return;
-        }
-        int mask = pressedMask;
-        pressedMask = 0;
-        log('W', "MCU", "按键报文超时，释放全部按键");
-        for (RcButton b : RcButton.values()) {
-            if (b.isDown(mask)) {
-                emitButton(b, false);
+        List<RcButton> released = null;
+        synchronized (lock) {
+            if (pressedMask == 0 || buttonAt == 0) {
+                return;
             }
+            if (now - buttonAt <= timeout) {
+                return;
+            }
+            int mask = pressedMask;
+            pressedMask = 0;
+            buttonAt = 0;
+            released = new ArrayList<>(2);
+            for (RcButton b : RcButton.values()) {
+                if (b.isDown(mask)) {
+                    released.add(b);
+                }
+            }
+        }
+        log('W', "MCU", "按键报文超时，释放全部按键");
+        for (RcButton b : released) {
+            emitButton(b, false);
         }
     }
 

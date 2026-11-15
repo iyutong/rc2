@@ -10,7 +10,7 @@ import androidx.annotation.NonNull;
  * <p>需要宿主在 Activity/Fragment 里把事件转进来：
  * <pre>
  * public boolean dispatchKeyEvent(KeyEvent e) {
- *     rc2.dispatchKeyEvent(e);
+ *     rc2.handleKeyEvent(e);
  *     return super.dispatchKeyEvent(e);
  * }
  * </pre>

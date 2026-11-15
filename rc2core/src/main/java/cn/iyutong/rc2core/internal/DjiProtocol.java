@@ -60,13 +60,23 @@ public final class DjiProtocol {
 
     private final Sink sink;
     private final int pollIntervalMs;
-    private final HandlerThread thread = new HandlerThread("rc2-protocol");
-    private final Handler worker;
 
-    private IBinder service;
+    /** 线程与 Handler 在 {@link #start()} 里才创建：只 new 不 start 不该留一个空转的线程。 */
+    private final Object lock = new Object();
+    private HandlerThread thread;
+    private Handler worker;
+    private boolean started;
+    /** 一旦 stop 过就不可复用，避免往已经退出的 Looper 里投任务。 */
+    private boolean stopped;
+
+    /**
+     * 跨线程可见性：写发生在 worker 线程（bind），读除了 worker 还会发生在调用线程
+     * （{@link #stop()} 里的退订），所以必须 volatile，否则调用线程可能读到 null 而漏退订。
+     */
+    private volatile IBinder service;
     private volatile boolean running;
     private volatile boolean waiting;
-    private long sentAt;
+    private volatile long sentAt;
 
     /** 主订阅（6/174）的接收端。 */
     private final Binder pushes = newListener();
@@ -91,8 +101,10 @@ public final class DjiProtocol {
             return;
         }
         if (code == IBinder.FIRST_CALL_TRANSACTION) {
-            data.enforceInterface(LISTENER);
+            // enforceInterface 也放进 try：对端包被截断时它会抛，异常逃出 onTransact
+            // 会以「Binder 事务异常」的形式打到系统日志里，还可能污染同线程的下一次事务
             try {
+                data.enforceInterface(LISTENER);
                 if (data.readInt() != 0) {
                     int[] hdr = new int[15];
                     for (int i = 0; i < 15; i++) {
@@ -120,9 +132,9 @@ public final class DjiProtocol {
                 return true;
             }
             if (code == IBinder.FIRST_CALL_TRANSACTION || code == 2) {
-                data.enforceInterface(LISTENER);
                 waiting = false;
                 try {
+                    data.enforceInterface(LISTENER);
                     if (code == IBinder.FIRST_CALL_TRANSACTION && data.readInt() != 0) {
                         for (int i = 0; i < 15; i++) {
                             data.readInt();
@@ -150,28 +162,56 @@ public final class DjiProtocol {
     public DjiProtocol(Sink sink, int pollIntervalMs) {
         this.sink = sink;
         this.pollIntervalMs = Math.max(16, pollIntervalMs);
-        thread.start();
-        worker = new Handler(thread.getLooper());
     }
 
-    /** 幂等启动。 */
+    /**
+     * 启动：建线程 → 绑定服务 → 订阅 → 开始轮询。
+     *
+     * <p>幂等，且<b>只能启动一次</b>：{@link #stop()} 之后线程已经退出，再次 start 没有意义，
+     * 直接忽略（控制器每次 start 都会新建一个 DjiProtocol 实例）。
+     */
     public void start() {
-        if (running) {
-            return;
+        synchronized (lock) {
+            if (started || stopped) {
+                return;
+            }
+            started = true;
+            running = true;
+            thread = new HandlerThread("rc2-protocol");
+            thread.start();
+            worker = new Handler(thread.getLooper());
         }
-        running = true;
         worker.post(this::bind);
     }
 
-    /** 幂等停止：退订并结束线程。 */
+    /**
+     * 幂等停止：退订并结束线程。
+     *
+     * <p>退订动作<b>排到 worker 队列里</b>而不是在当前线程直接做。原因是一个真实的时序坑：
+     * 若 {@code bind()} 正在 worker 上执行（已经发出订阅、还没返回），而调用线程抢先退订，
+     * 退订会先于订阅到达服务端，于是这次订阅就永远留在系统服务里泄漏了，
+     * 下一个实例还会收到重复的推送。排到同一条串行队列的尾部，可以保证「订阅 → 退订」的先后。
+     */
     public void stop() {
-        if (!running) {
+        final Handler w;
+        final HandlerThread t;
+        synchronized (lock) {
+            if (stopped) {
+                return;
+            }
+            stopped = true;
+            running = false;
+            w = worker;
+            t = thread;
+        }
+        if (w == null) {
             return;
         }
-        running = false;
-        worker.removeCallbacksAndMessages(null);
-        transactUnsubscribe(pushes);
-        thread.quitSafely();
+        w.removeCallbacksAndMessages(null);
+        w.post(() -> {
+            transactUnsubscribe(pushes);
+            t.quitSafely();
+        });
     }
 
     /**
@@ -181,14 +221,19 @@ public final class DjiProtocol {
      */
     @SuppressLint("PrivateApi")
     private void bind() {
+        if (!running) {
+            return;
+        }
+        IBinder svc;
         try {
-            service = (IBinder) Class.forName("android.os.ServiceManager")
+            svc = (IBinder) Class.forName("android.os.ServiceManager")
                     .getMethod("getService", String.class)
                     .invoke(null, SERVICE_NAME);
         } catch (Exception e) {
-            service = null;
+            svc = null;
         }
-        if (service == null) {
+        service = svc;
+        if (svc == null) {
             sink.onReady(false, "protocol 服务不可用（非遥控器环境？）");
             return;
         }
@@ -197,7 +242,10 @@ public final class DjiProtocol {
             return;
         }
         sink.onReady(true, "已连接 · 按键订阅 6/174");
-        poll();
+        // stop() 可能就在上面几行之间发生：此时不能再进入轮询，否则会往退出的队列里排任务
+        if (running) {
+            poll();
+        }
     }
 
     /** transact(2)：订阅主通道，filter {@code {4, 2, 0, 6, 6, 174}}。 */
@@ -249,6 +297,12 @@ public final class DjiProtocol {
         if (!running) {
             return;
         }
+        IBinder svc = service;
+        if (svc == null) {
+            // 服务在跑的过程中没了（被系统回收），没必要继续空转
+            sink.onReady(false, "protocol 服务已断开");
+            return;
+        }
         boolean ok = true;
         try {
             if (!waiting || SystemClock.uptimeMillis() - sentAt > 700) {
@@ -263,7 +317,7 @@ public final class DjiProtocol {
                     data.writeStrongBinder(queryCallback);
                     waiting = true;
                     sentAt = SystemClock.uptimeMillis();
-                    if (!service.transact(TX_QUERY, data, reply, 0)) {
+                    if (!svc.transact(TX_QUERY, data, reply, 0)) {
                         throw new Exception("查询事务被拒绝");
                     }
                     reply.readException();
@@ -273,6 +327,7 @@ public final class DjiProtocol {
                 }
             }
         } catch (SecurityException e) {
+            waiting = false;
             sink.onError(e.toString());
             running = false;
             return;
@@ -281,7 +336,8 @@ public final class DjiProtocol {
             ok = running;
             sink.onError("摇杆查询异常：" + e);
         }
-        if (ok) {
+        // 只有还在跑才续期：stop() 之后 worker 已 quitSafely，postDelayed 会静默失败
+        if (ok && running) {
             worker.postDelayed(this::poll, pollIntervalMs);
         }
     }

@@ -30,11 +30,14 @@ public final class ButtonCodec {
     /**
      * 两帧之间的差异位，形如 {@code "b2.4 b1.0"}。
      *
-     * @return {@code null} 表示前一帧不存在（首帧）；{@code "无变化"} 表示完全相同
+     * @return {@code "首帧"} 表示前一帧不存在；{@code "无变化"} 表示完全相同
      */
     public static String diff(byte[] prior, byte[] current) {
         if (prior == null) {
             return "首帧";
+        }
+        if (current == null) {
+            return "当前帧缺失";
         }
         StringBuilder sb = new StringBuilder();
         int n = Math.min(prior.length, current.length);
@@ -58,9 +61,9 @@ public final class ButtonCodec {
         return sb.length() == 0 ? "无变化" : sb.toString();
     }
 
-    /** 十六进制串，最多 max 字节。 */
+    /** 十六进制串，最多 max 字节；max 不为正时返回空串（旧实现会算出负长度，白拼一个 " …"）。 */
     public static String hex(byte[] b, int max) {
-        if (b == null || b.length == 0) {
+        if (b == null || b.length == 0 || max <= 0) {
             return "";
         }
         int n = Math.min(b.length, max);
